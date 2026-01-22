@@ -82,7 +82,8 @@ class Chessman(object):
     def move(self, col_num, row_num):
         if self.in_moving_list(col_num, row_num):
             self.__chessboard.remove_chessman_source(
-                self.__position.x, self.__position.y)
+                self.__position.x, self.__position.y
+            )
             self.__chessboard.update_history(self, col_num, row_num)
             self.__position.x = col_num
             self.__position.y = row_num
@@ -101,29 +102,59 @@ class Chessman(object):
         pass
 
     def border_check(self, col_num, row_num):
-        return num_between(self.__top, self.__bottom, row_num) and num_between(self.__right, self.__left, col_num)
+        return num_between(self.__top, self.__bottom, row_num) and num_between(
+            self.__right, self.__left, col_num
+        )
 
-    def calc_moving_path(self, direction_chessman, direction_vertical_coordinate, current_vertical_coordinate, direction_parallel_coordinate, direction, border_vertical_coordinate, h_or_v, ignore_color=False):
+    def calc_moving_path(
+        self,
+        direction_chessman,
+        direction_vertical_coordinate,
+        current_vertical_coordinate,
+        direction_parallel_coordinate,
+        direction,
+        border_vertical_coordinate,
+        h_or_v,
+        ignore_color=False,
+    ):
         if direction_chessman != None:
             if direction_chessman.is_red == self.is_red or ignore_color:
-                for i in range(direction_vertical_coordinate + direction, current_vertical_coordinate, direction):
+                for i in range(
+                    direction_vertical_coordinate + direction,
+                    current_vertical_coordinate,
+                    direction,
+                ):
                     self.__moving_list.append(
-                        Point.Point(i, direction_parallel_coordinate) if h_or_v else Point.Point(direction_parallel_coordinate, i))
+                        Point.Point(i, direction_parallel_coordinate)
+                        if h_or_v
+                        else Point.Point(direction_parallel_coordinate, i)
+                    )
 
             else:
-                for i in range(direction_vertical_coordinate, current_vertical_coordinate, direction):
+                for i in range(
+                    direction_vertical_coordinate,
+                    current_vertical_coordinate,
+                    direction,
+                ):
                     self.__moving_list.append(
-                        Point.Point(i, direction_parallel_coordinate) if h_or_v else Point.Point(direction_parallel_coordinate, i))
+                        Point.Point(i, direction_parallel_coordinate)
+                        if h_or_v
+                        else Point.Point(direction_parallel_coordinate, i)
+                    )
         else:
-            for i in range(border_vertical_coordinate, current_vertical_coordinate, direction):
+            for i in range(
+                border_vertical_coordinate, current_vertical_coordinate, direction
+            ):
                 self.__moving_list.append(
-                    Point.Point(i, direction_parallel_coordinate) if h_or_v else Point.Point(direction_parallel_coordinate, i))
+                    Point.Point(i, direction_parallel_coordinate)
+                    if h_or_v
+                    else Point.Point(direction_parallel_coordinate, i)
+                )
 
     def add_from_probable_points(self, probable_moving_points, current_color):
         for point in probable_moving_points:
             if self.border_check(point.x, point.y):
-                chessman = self.chessboard.get_chessman(
-                    point.x, point.y)
+                chessman = self.chessboard.get_chessman(point.x, point.y)
                 if chessman is None or chessman.is_red != current_color:
                     self.moving_list.append(point)
 
@@ -141,22 +172,54 @@ class Rook(Chessman):
         current_v_c = super(Rook, self).position.x
         current_h_c = super(Rook, self).position.y
         left = super(Rook, self).chessboard.get_left_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         right = super(Rook, self).chessboard.get_right_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         top = super(Rook, self).chessboard.get_top_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         bottom = super(Rook, self).chessboard.get_bottom_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
 
-        super(Rook, self).calc_moving_path(left, (left.position.x if left != None else None),
-                                           current_v_c, current_h_c, 1, 0, True)
-        super(Rook, self).calc_moving_path(right, (right.position.x if right != None else None),
-                                           current_v_c, current_h_c, -1, 8, True)
-        super(Rook, self).calc_moving_path(top, (top.position.y if top != None else None),
-                                           current_h_c, current_v_c, -1, 9, False)
-        super(Rook, self).calc_moving_path(bottom, (bottom.position.y if bottom != None else None),
-                                           current_h_c, current_v_c, 1, 0, False)
+        super(Rook, self).calc_moving_path(
+            left,
+            (left.position.x if left != None else None),
+            current_v_c,
+            current_h_c,
+            1,
+            0,
+            True,
+        )
+        super(Rook, self).calc_moving_path(
+            right,
+            (right.position.x if right != None else None),
+            current_v_c,
+            current_h_c,
+            -1,
+            8,
+            True,
+        )
+        super(Rook, self).calc_moving_path(
+            top,
+            (top.position.y if top != None else None),
+            current_h_c,
+            current_v_c,
+            -1,
+            9,
+            False,
+        )
+        super(Rook, self).calc_moving_path(
+            bottom,
+            (bottom.position.y if bottom != None else None),
+            current_h_c,
+            current_v_c,
+            1,
+            0,
+            False,
+        )
 
 
 class Knight(Chessman):
@@ -182,21 +245,25 @@ class Knight(Chessman):
         current_color = super(Knight, self).is_red
         for point in probable_obstacle_points:
             if super(Knight, self).border_check(point.x, point.y):
-                chessman = super(Knight, self).chessboard.get_chessman(
-                    point.x, point.y)
+                chessman = super(Knight, self).chessboard.get_chessman(point.x, point.y)
                 if chessman is None:
                     if point.x == current_v_c:
                         probable_moving_points.append(
-                            Point.Point(point.x + 1, 2 * point.y - current_h_c))
+                            Point.Point(point.x + 1, 2 * point.y - current_h_c)
+                        )
                         probable_moving_points.append(
-                            Point.Point(point.x - 1, 2 * point.y - current_h_c))
+                            Point.Point(point.x - 1, 2 * point.y - current_h_c)
+                        )
                     else:
                         probable_moving_points.append(
-                            Point.Point(2 * point.x - current_v_c, point.y + 1))
+                            Point.Point(2 * point.x - current_v_c, point.y + 1)
+                        )
                         probable_moving_points.append(
-                            Point.Point(2 * point.x - current_v_c, point.y - 1))
+                            Point.Point(2 * point.x - current_v_c, point.y - 1)
+                        )
         super(Knight, self).add_from_probable_points(
-            probable_moving_points, current_color)
+            probable_moving_points, current_color
+        )
 
 
 class Cannon(Chessman):
@@ -212,42 +279,86 @@ class Cannon(Chessman):
         current_v_c = super(Cannon, self).position.x
         current_h_c = super(Cannon, self).position.y
         left = super(Cannon, self).chessboard.get_left_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         right = super(Cannon, self).chessboard.get_right_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         top = super(Cannon, self).chessboard.get_top_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         bottom = super(Cannon, self).chessboard.get_bottom_first_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         tar_left = super(Cannon, self).chessboard.get_left_second_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         tar_right = super(Cannon, self).chessboard.get_right_second_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         tar_top = super(Cannon, self).chessboard.get_top_second_chessman(
-            current_v_c, current_h_c)
+            current_v_c, current_h_c
+        )
         tar_bottom = super(Cannon, self).chessboard.get_bottom_second_chessman(
-            current_v_c, current_h_c)
-        super(Cannon, self).calc_moving_path(left, (left.position.x if left != None else None),
-                                             current_v_c, current_h_c, 1, 0, True, True)
-        super(Cannon, self).calc_moving_path(right, (right.position.x if right != None else None),
-                                             current_v_c, current_h_c, -1, 8, True, True)
-        super(Cannon, self).calc_moving_path(top, (top.position.y if top != None else None),
-                                             current_h_c, current_v_c, -1, 9, False, True)
-        super(Cannon, self).calc_moving_path(bottom, (bottom.position.y if bottom != None else None),
-                                             current_h_c, current_v_c, 1, 0, False, True)
+            current_v_c, current_h_c
+        )
+        super(Cannon, self).calc_moving_path(
+            left,
+            (left.position.x if left != None else None),
+            current_v_c,
+            current_h_c,
+            1,
+            0,
+            True,
+            True,
+        )
+        super(Cannon, self).calc_moving_path(
+            right,
+            (right.position.x if right != None else None),
+            current_v_c,
+            current_h_c,
+            -1,
+            8,
+            True,
+            True,
+        )
+        super(Cannon, self).calc_moving_path(
+            top,
+            (top.position.y if top != None else None),
+            current_h_c,
+            current_v_c,
+            -1,
+            9,
+            False,
+            True,
+        )
+        super(Cannon, self).calc_moving_path(
+            bottom,
+            (bottom.position.y if bottom != None else None),
+            current_h_c,
+            current_v_c,
+            1,
+            0,
+            False,
+            True,
+        )
         current_color = super(Cannon, self).is_red
         if tar_left != None and tar_left.is_red != current_color:
             super(Cannon, self).moving_list.append(
-                Point.Point(tar_left.position.x, tar_left.position.y))
+                Point.Point(tar_left.position.x, tar_left.position.y)
+            )
         if tar_right != None and tar_right.is_red != current_color:
             super(Cannon, self).moving_list.append(
-                Point.Point(tar_right.position.x, tar_right.position.y))
+                Point.Point(tar_right.position.x, tar_right.position.y)
+            )
         if tar_top != None and tar_top.is_red != current_color:
             super(Cannon, self).moving_list.append(
-                Point.Point(tar_top.position.x, tar_top.position.y))
+                Point.Point(tar_top.position.x, tar_top.position.y)
+            )
         if tar_bottom != None and tar_bottom.is_red != current_color:
             super(Cannon, self).moving_list.append(
-                Point.Point(tar_bottom.position.x, tar_bottom.position.y))
+                Point.Point(tar_bottom.position.x, tar_bottom.position.y)
+            )
 
 
 class Mandarin(Chessman):
@@ -275,7 +386,8 @@ class Mandarin(Chessman):
         current_color = super(Mandarin, self).is_red
 
         super(Mandarin, self).add_from_probable_points(
-            probable_moving_points, current_color)
+            probable_moving_points, current_color
+        )
 
 
 class Elephant(Chessman):
@@ -305,12 +417,17 @@ class Elephant(Chessman):
         for point in probable_obstacle_points:
             if super(Elephant, self).border_check(point.x, point.y):
                 chessman = super(Elephant, self).chessboard.get_chessman(
-                    point.x, point.y)
+                    point.x, point.y
+                )
                 if chessman is None:
                     probable_moving_points.append(
-                        Point.Point(2 * point.x - current_v_c, 2 * point.y - current_h_c))
+                        Point.Point(
+                            2 * point.x - current_v_c, 2 * point.y - current_h_c
+                        )
+                    )
         super(Elephant, self).add_from_probable_points(
-            probable_moving_points, current_color)
+            probable_moving_points, current_color
+        )
 
 
 class Pawn(Chessman):
@@ -338,14 +455,14 @@ class Pawn(Chessman):
         probable_moving_points = []
         current_color = super(Pawn, self).is_red
         probable_moving_points.append(
-            Point.Point(current_v_c, current_h_c + self.__direction))
+            Point.Point(current_v_c, current_h_c + self.__direction)
+        )
         if current_h_c * self.__direction >= self.__river * self.__direction:
-            probable_moving_points.append(
-                Point.Point(current_v_c + 1, current_h_c))
-            probable_moving_points.append(
-                Point.Point(current_v_c - 1, current_h_c))
+            probable_moving_points.append(Point.Point(current_v_c + 1, current_h_c))
+            probable_moving_points.append(Point.Point(current_v_c - 1, current_h_c))
         super(Pawn, self).add_from_probable_points(
-            probable_moving_points, current_color)
+            probable_moving_points, current_color
+        )
 
 
 class King(Chessman):
@@ -375,4 +492,5 @@ class King(Chessman):
         creat_points(probable_moving_points, vs2, hs2)
         current_color = super(King, self).is_red
         super(King, self).add_from_probable_points(
-            probable_moving_points, current_color)
+            probable_moving_points, current_color
+        )

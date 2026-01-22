@@ -9,8 +9,10 @@ class Chessboard(object):
         self.__is_red_turn = True
         self.__chessmans = [([None] * 10) for i in range(9)]
         self.__chessmans_hash = {}
-        self.__history = {"red": {"chessman": None, "last_pos": None, "repeat": 0},
-                          "black": {"chessman": None, "last_pos": None, "repeat": 0}}
+        self.__history = {
+            "red": {"chessman": None, "last_pos": None, "repeat": 0},
+            "black": {"chessman": None, "last_pos": None, "repeat": 0},
+        }
 
     @property
     def is_red_turn(self):
@@ -37,59 +39,61 @@ class Chessboard(object):
         red_rook_left.add_to_board(0, 0)
         red_rook_right = Chessman.Rook(" 车r红 ", "red_rook_right", True, self)
         red_rook_right.add_to_board(8, 0)
-        black_rook_left = Chessman.Rook(
-            " 车l黑 ", "black_rook_left", False, self)
+        black_rook_left = Chessman.Rook(" 车l黑 ", "black_rook_left", False, self)
         black_rook_left.add_to_board(0, 9)
-        black_rook_right = Chessman.Rook(
-            " 车r黑 ", "black_rook_right", False, self)
+        black_rook_right = Chessman.Rook(" 车r黑 ", "black_rook_right", False, self)
         black_rook_right.add_to_board(8, 9)
-        red_knight_left = Chessman.Knight(
-            " 马l红 ", "red_knight_left", True, self)
+        red_knight_left = Chessman.Knight(" 马l红 ", "red_knight_left", True, self)
         red_knight_left.add_to_board(1, 0)
-        red_knight_right = Chessman.Knight(
-            " 马r红 ", "red_knight_right", True, self)
+        red_knight_right = Chessman.Knight(" 马r红 ", "red_knight_right", True, self)
         red_knight_right.add_to_board(7, 0)
-        black_knight_left = Chessman.Knight(
-            " 马l黑 ", "black_knight_left", False, self)
+        black_knight_left = Chessman.Knight(" 马l黑 ", "black_knight_left", False, self)
         black_knight_left.add_to_board(1, 9)
         black_knight_right = Chessman.Knight(
-            " 马r黑 ", "black_knight_right", False, self)
+            " 马r黑 ", "black_knight_right", False, self
+        )
         black_knight_right.add_to_board(7, 9)
-        red_cannon_left = Chessman.Cannon(
-            " 炮l红 ", "red_cannon_left", True, self)
+        red_cannon_left = Chessman.Cannon(" 炮l红 ", "red_cannon_left", True, self)
         red_cannon_left.add_to_board(1, 2)
-        red_cannon_right = Chessman.Cannon(
-            " 炮r红 ", "red_cannon_right", True, self)
+        red_cannon_right = Chessman.Cannon(" 炮r红 ", "red_cannon_right", True, self)
         red_cannon_right.add_to_board(7, 2)
-        black_cannon_left = Chessman.Cannon(
-            " 炮l黑 ", "black_cannon_left", False, self)
+        black_cannon_left = Chessman.Cannon(" 炮l黑 ", "black_cannon_left", False, self)
         black_cannon_left.add_to_board(1, 7)
         black_cannon_right = Chessman.Cannon(
-            " 炮r黑 ", "black_cannon_right", False, self)
+            " 炮r黑 ", "black_cannon_right", False, self
+        )
         black_cannon_right.add_to_board(7, 7)
         red_elephant_left = Chessman.Elephant(
-            " 相l红 ", "red_elephant_left", True, self)
+            " 相l红 ", "red_elephant_left", True, self
+        )
         red_elephant_left.add_to_board(2, 0)
         red_elephant_right = Chessman.Elephant(
-            " 相r红 ", "red_elephant_right", True, self)
+            " 相r红 ", "red_elephant_right", True, self
+        )
         red_elephant_right.add_to_board(6, 0)
         black_elephant_left = Chessman.Elephant(
-            " 象l黑 ", "black_elephant_left", False, self)
+            " 象l黑 ", "black_elephant_left", False, self
+        )
         black_elephant_left.add_to_board(2, 9)
         black_elephant_right = Chessman.Elephant(
-            " 象r黑 ", "black_elephant_right", False, self)
+            " 象r黑 ", "black_elephant_right", False, self
+        )
         black_elephant_right.add_to_board(6, 9)
         red_mandarin_left = Chessman.Mandarin(
-            " 仕l红 ", "red_mandarin_left", True, self)
+            " 仕l红 ", "red_mandarin_left", True, self
+        )
         red_mandarin_left.add_to_board(3, 0)
         red_mandarin_right = Chessman.Mandarin(
-            " 仕r红 ", "red_mandarin_right", True, self)
+            " 仕r红 ", "red_mandarin_right", True, self
+        )
         red_mandarin_right.add_to_board(5, 0)
         black_mandarin_left = Chessman.Mandarin(
-            " 仕l黑 ", "black_mandarin_left", False, self)
+            " 仕l黑 ", "black_mandarin_left", False, self
+        )
         black_mandarin_left.add_to_board(3, 9)
         black_mandarin_right = Chessman.Mandarin(
-            " 仕r黑 ", "black_mandarin_right", False, self)
+            " 仕r黑 ", "black_mandarin_right", False, self
+        )
         black_mandarin_right.add_to_board(5, 9)
         red_king = Chessman.King(" 帅 红 ", "red_king", True, self)
         red_king.add_to_board(4, 0)
@@ -153,13 +157,17 @@ class Chessboard(object):
         red_or_black = self.red_or_black(chessman)
         history_chessman = self.__history[red_or_black]["chessman"]
         history_pos = self.__history[red_or_black]["last_pos"]
-        if history_chessman == chessman and history_pos != None and history_pos[0] == col_num and history_pos[1] == row_num:
+        if (
+            history_chessman == chessman
+            and history_pos != None
+            and history_pos[0] == col_num
+            and history_pos[1] == row_num
+        ):
             self.__history[red_or_black]["repeat"] += 1
         else:
             self.__history[red_or_black]["repeat"] = 0
         self.__history[red_or_black]["chessman"] = chessman
-        self.__history[red_or_black]["last_pos"] = (
-            chessman.col_num, chessman.row_num)
+        self.__history[red_or_black]["last_pos"] = (chessman.col_num, chessman.row_num)
 
     def red_or_black(self, chessman):
         if chessman.is_red:

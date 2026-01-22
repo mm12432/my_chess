@@ -10,7 +10,7 @@ def print_chessman_name(chessman):
 
 
 def main():
-    cbd = Chessboard.Chessboard('123')
+    cbd = Chessboard.Chessboard("123")
     cbd.init_board()
     cbd.print_to_cl()
     while not cbd.is_end():
@@ -37,11 +37,12 @@ def main():
             title = "请输入落子的位置: "
             input_chessman_position = input(title)
             is_correct_position = chessman.move(
-                input_chessman_position[0], input_chessman_position[1])
+                input_chessman_position[0], input_chessman_position[1]
+            )
             if is_correct_position:
                 cbd.print_to_cl()
                 cbd.clear_chessmans_moving_list()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()
