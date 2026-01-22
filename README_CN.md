@@ -3,6 +3,13 @@
 
 [English](README.md) | [中文](README_CN.md)
 
+## v1.1 版本更新日志
+- **现代化重构**: 将老旧的 Python 2 代码全面升级为 Python 3.8+ 标准（引入类型提示 Type Hints, `dataclasses`, 新版 `super()` 语法）。
+- **工程化建设**: 新增 `pyproject.toml` 配置，标准化的 `.gitignore`，并锁定了 `requirements.txt` 依赖版本。
+- **基础设施**: 引入 `run.py` 作为统一启动入口，彻底解决了包导入路径问题。
+- **代码规范**: 强制执行 `black` 和 `isort` 代码格式化标准。
+- **缺陷修复**: 修复了 CLI 命令行模式在 Python 3 下的输入崩溃问题。
+
 ## 快速开始
 
 ### 前提条件

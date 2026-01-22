@@ -3,6 +3,13 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
 
 [English](README.md) | [中文](README_CN.md)
 
+## What's New in v1.1
+- **Modernization**: Migrated legacy Python 2 code to Python 3.8+ standards (Type Hints, `dataclasses`, new `super()` syntax).
+- **Engineering**: Added `pyproject.toml`, standard `.gitignore`, and pinned dependencies in `requirements.txt`.
+- **Infrastructure**: Introduced `run.py` as a unified entry point to fix import path issues.
+- **Code Style**: Enforced `black` and `isort` formatting rules.
+- **Fixes**: Resolved Python 3 crash in CLI mode input handling.
+
 ## Quick Start
 
 ### Prerequisites

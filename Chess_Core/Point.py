@@ -1,7 +1,7 @@
-# coding:utf8
+from dataclasses import dataclass
 
 
-class Point(object):
-    def __init__(self, x, y):
-        self.x = x
-        self.y = y
+@dataclass
+class Point:
+    x: int
+    y: int

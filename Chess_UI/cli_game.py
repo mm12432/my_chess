@@ -1,4 +1,3 @@
-# coding:utf-8
 from MyChess.Chess_Core import Chessboard, Chessman
 
 
@@ -26,7 +25,7 @@ def main():
             title = "请输入棋子名字: "
             input_chessman_name = input(title)
             chessman = cbd.get_chessman_by_name(input_chessman_name)
-            if chessman != None and chessman.is_red == cbd.is_red_turn:
+            if chessman is not None and chessman.is_red == cbd.is_red_turn:
                 is_correct_chessman = True
                 print("当前可以落子的位置有：")
                 for point in chessman.moving_list:
@@ -34,11 +33,18 @@ def main():
             else:
                 print("没有找到此名字的棋子或未轮到此方走子")
         while not is_correct_position:
-            title = "请输入落子的位置: "
+            title = "请输入落子的位置(如 00 表示第0列第0行): "
             input_chessman_position = input(title)
-            is_correct_position = chessman.move(
-                input_chessman_position[0], input_chessman_position[1]
-            )
+            if len(input_chessman_position) >= 2:
+                try:
+                    col_num = int(input_chessman_position[0])
+                    row_num = int(input_chessman_position[1])
+                    is_correct_position = chessman.move(col_num, row_num)
+                except ValueError:
+                    print("请输入两个数字作为坐标")
+            else:
+                print("输入格式错误，请输入两个数字")
+
             if is_correct_position:
                 cbd.print_to_cl()
                 cbd.clear_chessmans_moving_list()
