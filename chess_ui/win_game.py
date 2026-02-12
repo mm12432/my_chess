@@ -21,9 +21,8 @@ SCREENRECT = Rect(0, 0, BOARD_WIDTH + SIDEBAR_WIDTH, BOARD_HEIGHT)
 BUTTON_WIDTH = 120
 BUTTON_HEIGHT = 45
 BUTTON_X = BOARD_WIDTH + (SIDEBAR_WIDTH - BUTTON_WIDTH) // 2
-BTN_UNDO_RECT = Rect(BUTTON_X, 650, BUTTON_WIDTH, BUTTON_HEIGHT)
-BTN_RESTART_RECT = Rect(BUTTON_X, 710, BUTTON_WIDTH, BUTTON_HEIGHT)
-BTN_SAVE_RECT = Rect(BUTTON_X, 590, BUTTON_WIDTH, BUTTON_HEIGHT)
+BTN_RESTART_RECT = Rect(BUTTON_X, 700, BUTTON_WIDTH, BUTTON_HEIGHT)
+BTN_SAVE_RECT = Rect(BUTTON_X, 640, BUTTON_WIDTH, BUTTON_HEIGHT)
 
 
 def load_image(file, name=None):
@@ -282,7 +281,6 @@ def draw_sidebar(
 
     # Draw Buttons
     draw_button(screen, BTN_SAVE_RECT, "保存FEN", small_font)
-    draw_button(screen, BTN_UNDO_RECT, "悔 棋", small_font)
     draw_button(screen, BTN_RESTART_RECT, "重 开", small_font)
 
 
@@ -385,23 +383,6 @@ def main(winstyle=0):
                         black_time = 0
                         game_over_text = ""
                         print("Restarted.")
-                        continue
-
-                    if BTN_UNDO_RECT.collidepoint(mouse_x, mouse_y):
-                        if (
-                            not game_over_text
-                        ):  # Allow undo only if game not over? Or allow to revert checkmate?
-                            # Standard is allowing undo even after checkmate to analyze
-                            # If game_over_text is set, 'winner' is set. Undo clears it.
-                            pass
-
-                        if cbd.undo_move():
-                            chessmans.empty()
-                            creat_sprite_group(chessmans, cbd.chessmans_hash)
-                            current_chessman = None
-                            cbd.calc_chessmans_moving_list()
-                            game_over_text = ""  # Clear game over state
-                            print("Undone.")
                         continue
 
                     # Board Interaction (Only if Game Not Over)

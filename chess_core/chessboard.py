@@ -5,8 +5,7 @@ and game logic. It handles moving pieces, turn management, history tracking, and
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
-import copy
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 from my_chess.chess_core import chessman
 
@@ -28,14 +27,12 @@ class Chessboard:
             ([None] * 10) for _ in range(9)
         ]
         self.__chessmans_hash: Dict[str, ChessmanType] = {}
-        # Legacy history for "chasing"/"checking" detection (optional, kept for compatibility)
-        self.__history: Dict[str, Dict[str, Any]] = {
+        # 用于长将/长捉检测的历史记录
+        self.__history: Dict[str, Dict] = {
             "red": {"chessman": None, "last_pos": None, "repeat": 0},
             "black": {"chessman": None, "last_pos": None, "repeat": 0},
         }
-
         self.moves_history: List[str] = []
-        self.undo_stack: List[Any] = []
 
         from my_chess.chess_core.zobrist import Zobrist
 
@@ -158,22 +155,7 @@ class Chessboard:
                 piece, piece.col_num, piece.row_num, col_num, row_num
             )
 
-            # Save undo info: (chessman, from_col, from_row, to_col, to_row, captured_piece, history_state, history_str)
             captured = self.get_chessman(col_num, row_num)
-            history_copy = copy.deepcopy(self.__history)
-
-            self.undo_stack.append(
-                {
-                    "chessman": piece,
-                    "from_col": piece.col_num,
-                    "from_row": piece.row_num,
-                    "to_col": col_num,
-                    "to_row": row_num,
-                    "captured": captured,
-                    "history_state": history_copy,
-                    "move_str": move_str,
-                }
-            )
 
             # Update Hash
             self.current_hash = self.zobrist.update_hash(
@@ -198,57 +180,6 @@ class Chessboard:
         else:
             print("the wrong turn")
             return False
-
-    def undo_move(self) -> bool:
-        """Undoes the last move, restoring board state, history, and turn."""
-        if not self.undo_stack:
-            return False
-
-        last_move = self.undo_stack.pop()
-        piece = last_move["chessman"]
-        from_col = last_move["from_col"]
-        from_row = last_move["from_row"]
-        to_col = last_move["to_col"]
-        to_row = last_move["to_row"]
-        captured = last_move["captured"]
-        history_state = last_move["history_state"]
-
-        # Decrement hash count for current state
-        if self.current_hash in self.hash_history:
-            self.hash_history[self.current_hash] -= 1
-            if self.hash_history[self.current_hash] <= 0:
-                del self.hash_history[self.current_hash]
-
-        # Revert Hash (Apply XOR again to go back)
-        self.current_hash = self.zobrist.update_hash(
-            self.current_hash, piece, from_col, from_row, to_col, to_row, captured
-        )
-
-        # 1. Move chessman back
-        self.remove_chessman_source(to_col, to_row)
-
-        # Update internal position
-        piece.update_position(from_col, from_row)
-
-        # Place back on board
-        self.chessmans[from_col][from_row] = piece
-
-        # 2. Restore captured piece
-        if captured:
-            captured.update_position(to_col, to_row)
-            self.chessmans[to_col][to_row] = captured
-            self.__chessmans_hash[captured.name] = captured
-            captured.is_alive = True
-
-        # 3. Restore history
-        self.__history = history_state
-        if self.moves_history:
-            self.moves_history.pop()
-
-        # 4. Flip turn
-        self._is_red_turn = not self._is_red_turn
-
-        return True
 
     def get_winner(self) -> Optional[str]:
         """Checks if there is a winner (returns 'Red', 'Black', 'Draw', or None)."""
@@ -448,7 +379,6 @@ class Chessboard:
             "black": {"chessman": None, "last_pos": None, "repeat": 0},
         }
         self.moves_history = []
-        self.undo_stack = []
         self.current_hash = 0
         self.hash_history = {}
 
