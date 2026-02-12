@@ -1,11 +1,16 @@
+"""
+This module defines the Chessman class and its subclasses (Rook, Knight, Cannon, etc.),
+representing the pieces in Chinese Chess. It handles piece movement logic and validation.
+"""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Optional
 
-from MyChess.Chess_Core import Point
+from MyChess.Chess_Core import point as point_lib
 
 if TYPE_CHECKING:
-    from MyChess.Chess_Core.Chessboard import Chessboard
+    from MyChess.Chess_Core.chessboard import Chessboard
 
 
 def num_between(max_num: int, min_num: int, current: int) -> bool:
@@ -13,11 +18,11 @@ def num_between(max_num: int, min_num: int, current: int) -> bool:
 
 
 def creat_points(
-    list_points: List[Point.Point], list_vs: tuple, list_hs: tuple
+    list_points: List[point_lib.Point], list_vs: tuple, list_hs: tuple
 ) -> None:
     for v in list_vs:
         for h in list_hs:
-            list_points.append(Point.Point(v, h))
+            list_points.append(point_lib.Point(v, h))
 
 
 class Chessman:
@@ -27,8 +32,8 @@ class Chessman:
         self.__name = name
         self.__is_red = is_red
         self.__chessboard = chessboard
-        self.__position = Point.Point(0, 0)  # Initialize with dummy values
-        self.__moving_list: List[Point.Point] = []
+        self.__position = point_lib.Point(0, 0)  # Initialize with dummy values
+        self.__moving_list: List[point_lib.Point] = []
         self.__top = 9
         self.__bottom = 0
         self.__left = 0
@@ -65,15 +70,20 @@ class Chessman:
         return self.__name
 
     @property
+    def fen_char(self) -> str:
+        """Returns the FEN character for this piece (Uppercase for Red, Lowercase for Black)"""
+        return ""
+
+    @property
     def name_cn(self) -> str:
         return self.__name_cn
 
     @property
-    def position(self) -> Point.Point:
+    def position(self) -> point_lib.Point:
         return self.__position
 
     @property
-    def moving_list(self) -> List[Point.Point]:
+    def moving_list(self) -> List[point_lib.Point]:
         return self.__moving_list
 
     def clear_moving_list(self) -> None:
@@ -101,8 +111,8 @@ class Chessman:
             return False
 
     def in_moving_list(self, col_num: int, row_num: int) -> bool:
-        for point in self.__moving_list:
-            if point.x == col_num and point.y == row_num:
+        for pt in self.__moving_list:
+            if pt.x == col_num and pt.y == row_num:
                 return True
         return False
 
@@ -135,9 +145,9 @@ class Chessman:
                     direction,
                 ):
                     self.__moving_list.append(
-                        Point.Point(i, direction_parallel_coordinate)
+                        point_lib.Point(i, direction_parallel_coordinate)
                         if h_or_v
-                        else Point.Point(direction_parallel_coordinate, i)
+                        else point_lib.Point(direction_parallel_coordinate, i)
                     )
 
             elif direction_vertical_coordinate is not None:
@@ -147,28 +157,28 @@ class Chessman:
                     direction,
                 ):
                     self.__moving_list.append(
-                        Point.Point(i, direction_parallel_coordinate)
+                        point_lib.Point(i, direction_parallel_coordinate)
                         if h_or_v
-                        else Point.Point(direction_parallel_coordinate, i)
+                        else point_lib.Point(direction_parallel_coordinate, i)
                     )
         else:
             for i in range(
                 border_vertical_coordinate, current_vertical_coordinate, direction
             ):
                 self.__moving_list.append(
-                    Point.Point(i, direction_parallel_coordinate)
+                    point_lib.Point(i, direction_parallel_coordinate)
                     if h_or_v
-                    else Point.Point(direction_parallel_coordinate, i)
+                    else point_lib.Point(direction_parallel_coordinate, i)
                 )
 
     def add_from_probable_points(
-        self, probable_moving_points: List[Point.Point], current_color: bool
+        self, probable_moving_points: List[point_lib.Point], current_color: bool
     ) -> None:
-        for point in probable_moving_points:
-            if self.border_check(point.x, point.y):
-                chessman = self.chessboard.get_chessman(point.x, point.y)
+        for pt in probable_moving_points:
+            if self.border_check(pt.x, pt.y):
+                chessman = self.chessboard.get_chessman(pt.x, pt.y)
                 if chessman is None or chessman.is_red != current_color:
-                    self.moving_list.append(point)
+                    self.moving_list.append(pt)
 
 
 class Rook(Chessman):
@@ -180,6 +190,10 @@ class Rook(Chessman):
         self._Chessman__bottom = 0
         self._Chessman__left = 0
         self._Chessman__right = 8
+
+    @property
+    def fen_char(self) -> str:
+        return "R" if self.is_red else "r"
 
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
@@ -237,11 +251,15 @@ class Knight(Chessman):
         self._Chessman__left = 0
         self._Chessman__right = 8
 
+    @property
+    def fen_char(self) -> str:
+        return "N" if self.is_red else "n"
+
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
         current_h_c = self.position.y
-        probable_obstacle_points: List[Point.Point] = []
-        probable_moving_points: List[Point.Point] = []
+        probable_obstacle_points: List[point_lib.Point] = []
+        probable_moving_points: List[point_lib.Point] = []
         vs1 = (current_v_c + 1, current_v_c - 1)
         hs1 = (current_h_c,)
         vs2 = (current_v_c,)
@@ -249,23 +267,23 @@ class Knight(Chessman):
         creat_points(probable_obstacle_points, vs1, hs1)
         creat_points(probable_obstacle_points, vs2, hs2)
         current_color = self.is_red
-        for point in probable_obstacle_points:
-            if self.border_check(point.x, point.y):
-                chessman = self.chessboard.get_chessman(point.x, point.y)
+        for pt in probable_obstacle_points:
+            if self.border_check(pt.x, pt.y):
+                chessman = self.chessboard.get_chessman(pt.x, pt.y)
                 if chessman is None:
-                    if point.x == current_v_c:
+                    if pt.x == current_v_c:
                         probable_moving_points.append(
-                            Point.Point(point.x + 1, 2 * point.y - current_h_c)
+                            point_lib.Point(pt.x + 1, 2 * pt.y - current_h_c)
                         )
                         probable_moving_points.append(
-                            Point.Point(point.x - 1, 2 * point.y - current_h_c)
+                            point_lib.Point(pt.x - 1, 2 * pt.y - current_h_c)
                         )
                     else:
                         probable_moving_points.append(
-                            Point.Point(2 * point.x - current_v_c, point.y + 1)
+                            point_lib.Point(2 * pt.x - current_v_c, pt.y + 1)
                         )
                         probable_moving_points.append(
-                            Point.Point(2 * point.x - current_v_c, point.y - 1)
+                            point_lib.Point(2 * pt.x - current_v_c, pt.y - 1)
                         )
         self.add_from_probable_points(probable_moving_points, current_color)
 
@@ -279,6 +297,10 @@ class Cannon(Chessman):
         self._Chessman__bottom = 0
         self._Chessman__left = 0
         self._Chessman__right = 8
+
+    @property
+    def fen_char(self) -> str:
+        return "C" if self.is_red else "c"
 
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
@@ -336,17 +358,19 @@ class Cannon(Chessman):
         current_color = self.is_red
         if tar_left is not None and tar_left.is_red != current_color:
             self.moving_list.append(
-                Point.Point(tar_left.position.x, tar_left.position.y)
+                point_lib.Point(tar_left.position.x, tar_left.position.y)
             )
         if tar_right is not None and tar_right.is_red != current_color:
             self.moving_list.append(
-                Point.Point(tar_right.position.x, tar_right.position.y)
+                point_lib.Point(tar_right.position.x, tar_right.position.y)
             )
         if tar_top is not None and tar_top.is_red != current_color:
-            self.moving_list.append(Point.Point(tar_top.position.x, tar_top.position.y))
+            self.moving_list.append(
+                point_lib.Point(tar_top.position.x, tar_top.position.y)
+            )
         if tar_bottom is not None and tar_bottom.is_red != current_color:
             self.moving_list.append(
-                Point.Point(tar_bottom.position.x, tar_bottom.position.y)
+                point_lib.Point(tar_bottom.position.x, tar_bottom.position.y)
             )
 
 
@@ -366,10 +390,14 @@ class Mandarin(Chessman):
             self._Chessman__left = 3
             self._Chessman__right = 5
 
+    @property
+    def fen_char(self) -> str:
+        return "A" if self.is_red else "a"
+
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
         current_h_c = self.position.y
-        probable_moving_points: List[Point.Point] = []
+        probable_moving_points: List[point_lib.Point] = []
         vs1 = (current_v_c + 1, current_v_c - 1)
         hs1 = (current_h_c + 1, current_h_c - 1)
         creat_points(probable_moving_points, vs1, hs1)
@@ -394,23 +422,25 @@ class Elephant(Chessman):
             self._Chessman__left = 0
             self._Chessman__right = 8
 
+    @property
+    def fen_char(self) -> str:
+        return "B" if self.is_red else "b"
+
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
         current_h_c = self.position.y
-        probable_obstacle_points: List[Point.Point] = []
-        probable_moving_points: List[Point.Point] = []
+        probable_obstacle_points: List[point_lib.Point] = []
+        probable_moving_points: List[point_lib.Point] = []
         vs1 = (current_v_c + 1, current_v_c - 1)
         hs1 = (current_h_c + 1, current_h_c - 1)
         creat_points(probable_obstacle_points, vs1, hs1)
         current_color = self.is_red
-        for point in probable_obstacle_points:
-            if self.border_check(point.x, point.y):
-                chessman = self.chessboard.get_chessman(point.x, point.y)
+        for pt in probable_obstacle_points:
+            if self.border_check(pt.x, pt.y):
+                chessman = self.chessboard.get_chessman(pt.x, pt.y)
                 if chessman is None:
                     probable_moving_points.append(
-                        Point.Point(
-                            2 * point.x - current_v_c, 2 * point.y - current_h_c
-                        )
+                        point_lib.Point(2 * pt.x - current_v_c, 2 * pt.y - current_h_c)
                     )
         self.add_from_probable_points(probable_moving_points, current_color)
 
@@ -435,17 +465,21 @@ class Pawn(Chessman):
             self.__direction = -1
             self.__river = 4
 
+    @property
+    def fen_char(self) -> str:
+        return "P" if self.is_red else "p"
+
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
         current_h_c = self.position.y
-        probable_moving_points: List[Point.Point] = []
+        probable_moving_points: List[point_lib.Point] = []
         current_color = self.is_red
         probable_moving_points.append(
-            Point.Point(current_v_c, current_h_c + self.__direction)
+            point_lib.Point(current_v_c, current_h_c + self.__direction)
         )
         if current_h_c * self.__direction >= self.__river * self.__direction:
-            probable_moving_points.append(Point.Point(current_v_c + 1, current_h_c))
-            probable_moving_points.append(Point.Point(current_v_c - 1, current_h_c))
+            probable_moving_points.append(point_lib.Point(current_v_c + 1, current_h_c))
+            probable_moving_points.append(point_lib.Point(current_v_c - 1, current_h_c))
         self.add_from_probable_points(probable_moving_points, current_color)
 
 
@@ -465,10 +499,14 @@ class King(Chessman):
             self._Chessman__left = 3
             self._Chessman__right = 5
 
+    @property
+    def fen_char(self) -> str:
+        return "K" if self.is_red else "k"
+
     def calc_moving_list(self) -> None:
         current_v_c = self.position.x
         current_h_c = self.position.y
-        probable_moving_points: List[Point.Point] = []
+        probable_moving_points: List[point_lib.Point] = []
         vs1 = (current_v_c + 1, current_v_c - 1)
         hs1 = (current_h_c,)
         vs2 = (current_v_c,)
