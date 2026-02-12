@@ -126,9 +126,13 @@ class Chessman:
         if self.in_moving_list(col_num, row_num):
             self.__chessboard.remove_chessman_source(self._position.x, self._position.y)
             self.__chessboard.update_history(self, col_num, row_num)
-            self._position.x = col_num
-            self._position.y = row_num
-            return self.__chessboard.move_chessman(self, col_num, row_num)
+            # 重要：先调用 move_chessman 记录 undo 和记谱（需要原始坐标），
+            # 之后再更新 _position
+            result = self.__chessboard.move_chessman(self, col_num, row_num)
+            if result:
+                self._position.x = col_num
+                self._position.y = row_num
+            return result
 
         print("the wrong target_position")
         return False
