@@ -1,7 +1,13 @@
-from MyChess.Chess_Core import chessman
+"""
+This module handles the generation of standard Chinese Chess notation (e.g., "Cannon 2 moves 5").
+"""
+
+from MyChess.chess_core import chessman
 
 
 class MoveNotation:
+    """Helper class for generating move notations."""
+
     @staticmethod
     def get_chinese_num(num):
         """Convert number 0-9 to Chinese Characters.
@@ -16,16 +22,19 @@ class MoveNotation:
 
     @staticmethod
     def get_move_name(
-        chessman: chessman.Chessman,
+        piece: chessman.Chessman,
         from_col: int,
         from_row: int,
         to_col: int,
         to_row: int,
     ) -> str:
+        """
+        Generates the standard Chinese Chess notation for a move.
+        """
         # Determine strict name for the piece (e.g., "车", "马") without decorators
-        name = chessman.name_cn.strip()[1]  # e.g. " 车l红 " -> "车"
+        name = piece.name_cn.strip()[1]  # e.g. " 车l红 " -> "车"
 
-        is_red = chessman.is_red
+        is_red = piece.is_red
 
         # Calculate column numbers (files)
         # Red: 1 is at x=8, 9 is at x=0
@@ -60,7 +69,7 @@ class MoveNotation:
 
         # Identify piece type by class name or char
         # Using fen_char or checking type is reliable
-        p_char = chessman.fen_char.upper()
+        p_char = piece.fen_char.upper()
 
         is_linear = p_char in ["R", "C", "P", "K"]  # Rook, Cannon, Pawn, King
 

@@ -43,30 +43,37 @@ class Chessman:
 
     @property
     def row_num(self) -> int:
+        """Returns the row number of the piece."""
         return self.__position.y
 
     @property
     def col_num(self) -> int:
+        """Returns the column number of the piece."""
         return self.__position.x
 
     @property
     def is_alive(self) -> bool:
+        """Returns whether the piece is alive (not captured)."""
         return self.__is_alive
 
     @is_alive.setter
     def is_alive(self, is_alive: bool) -> None:
+        """Sets the alive status of the piece."""
         self.__is_alive = is_alive
 
     @property
     def chessboard(self) -> Chessboard:
+        """Returns the chessboard this piece belongs to."""
         return self.__chessboard
 
     @property
     def is_red(self) -> bool:
+        """Returns True if the piece is Red, False if Black."""
         return self.__is_red
 
     @property
     def name(self) -> str:
+        """Returns the unique name of the piece."""
         return self.__name
 
     @property
@@ -76,20 +83,25 @@ class Chessman:
 
     @property
     def name_cn(self) -> str:
+        """Returns the Chinese name of the piece."""
         return self.__name_cn
 
     @property
     def position(self) -> point_lib.Point:
+        """Returns the current position/point of the piece."""
         return self.__position
 
     @property
     def moving_list(self) -> List[point_lib.Point]:
+        """Returns the list of valid moving points for the piece."""
         return self.__moving_list
 
     def clear_moving_list(self) -> None:
+        """Clears the list of valid moving points."""
         self.__moving_list = []
 
     def add_to_board(self, col_num: int, row_num: int) -> None:
+        """Adds the piece to the board at the specified position."""
         if self.border_check(col_num, row_num):
             self.__position.x = col_num
             self.__position.y = row_num
@@ -98,6 +110,7 @@ class Chessman:
             print("the wrong position")
 
     def move(self, col_num: int, row_num: int) -> bool:
+        """Moves the piece to the specified position if valid."""
         if self.in_moving_list(col_num, row_num):
             self.__chessboard.remove_chessman_source(
                 self.__position.x, self.__position.y
@@ -111,15 +124,18 @@ class Chessman:
             return False
 
     def in_moving_list(self, col_num: int, row_num: int) -> bool:
+        """Checks if the target position is in the piece's moving list."""
         for pt in self.__moving_list:
             if pt.x == col_num and pt.y == row_num:
                 return True
         return False
 
     def calc_moving_list(self) -> None:
+        """Calculates the list of valid moving points. To be implemented by subclasses."""
         pass
 
     def border_check(self, col_num: int, row_num: int) -> bool:
+        """Checks if the given position is within the valid board area for this piece."""
         return num_between(self.__top, self.__bottom, row_num) and num_between(
             self.__right, self.__left, col_num
         )
@@ -135,6 +151,10 @@ class Chessman:
         h_or_v: bool,
         ignore_color: bool = False,
     ) -> None:
+        """
+        Calculates moving path in a specific direction.
+        Helper method for calculating moves for linear pieces (Rook, Cannon).
+        """
         if direction_chessman is not None:
             if (
                 direction_chessman.is_red == self.is_red or ignore_color
@@ -174,6 +194,7 @@ class Chessman:
     def add_from_probable_points(
         self, probable_moving_points: List[point_lib.Point], current_color: bool
     ) -> None:
+        """Filters probable points and adds valid ones to the moving list."""
         for pt in probable_moving_points:
             if self.border_check(pt.x, pt.y):
                 chessman = self.chessboard.get_chessman(pt.x, pt.y)
@@ -182,6 +203,8 @@ class Chessman:
 
 
 class Rook(Chessman):
+    """Represents the Rook (Chariot) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -242,6 +265,8 @@ class Rook(Chessman):
 
 
 class Knight(Chessman):
+    """Represents the Knight (Horse) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -289,6 +314,8 @@ class Knight(Chessman):
 
 
 class Cannon(Chessman):
+    """Represents the Cannon piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -375,6 +402,8 @@ class Cannon(Chessman):
 
 
 class Mandarin(Chessman):
+    """Represents the Mandarin (Advisor/Guard) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -407,6 +436,8 @@ class Mandarin(Chessman):
 
 
 class Elephant(Chessman):
+    """Represents the Elephant (Bishop) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -446,6 +477,8 @@ class Elephant(Chessman):
 
 
 class Pawn(Chessman):
+    """Represents the Pawn (Soldier) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
@@ -484,6 +517,8 @@ class Pawn(Chessman):
 
 
 class King(Chessman):
+    """Represents the King (General) piece."""
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:

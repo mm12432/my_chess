@@ -1,4 +1,8 @@
-from MyChess.Chess_Core import Chessboard, Chessman
+"""
+This module provides a command-line interface (CLI) for playing Chinese Chess.
+"""
+
+from MyChess.chess_core import chessboard
 
 
 def print_chessman_name(chessman):
@@ -9,7 +13,8 @@ def print_chessman_name(chessman):
 
 
 def main():
-    cbd = Chessboard.Chessboard("000")
+    """Main function to run the CLI game."""
+    cbd = chessboard.Chessboard("001")
     cbd.init_board()
     cbd.print_to_cl()
     while not cbd.is_end():

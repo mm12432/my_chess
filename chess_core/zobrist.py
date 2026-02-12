@@ -12,7 +12,12 @@ if TYPE_CHECKING:
 
 
 class Zobrist:
+    """
+    Implements Zobrist Hashing for Chinese Chess board states.
+    """
+
     def __init__(self):
+        """Initializes Zobrist keys for pieces and turn."""
         # 14 piece types (7 * 2 colors)
         # Positions 0..89 (9x10)
         # piece_keys[piece_index][position_index]
@@ -42,6 +47,9 @@ class Zobrist:
         }
 
     def get_piece_index(self, piece: "chessman.Chessman") -> int:
+        """
+        Calculates the unique index (0-13) for a piece type and color.
+        """
         # Determine index based on piece name or type
         # Assuming piece.name contains standard identifiers
         # But piece.name_en is "red_rook_1", etc.
@@ -72,10 +80,16 @@ class Zobrist:
         return base_idx + type_offset
 
     def get_position_index(self, col: int, row: int) -> int:
+        """
+        Maps 2D board coordinates (col, row) to a 1D index (0-89).
+        """
         # Row 0..9, Col 0..8
         return row * 9 + col
 
     def hash_board(self, chessboard: "chessboard.Chessboard") -> int:
+        """
+        Computes the Zobrist hash for the entire board state.
+        """
         h = 0
         if chessboard.is_red_turn:
             h ^= self.turn_key
@@ -99,6 +113,9 @@ class Zobrist:
         new_row,
         captured_piece=None,
     ) -> int:
+        """
+        Incrementally updates the hash based on a move.
+        """
         # XOR out old position
         p_idx = self.get_piece_index(piece)
         old_pos_idx = self.get_position_index(old_col, old_row)

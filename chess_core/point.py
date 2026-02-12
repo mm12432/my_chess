@@ -1,8 +1,15 @@
-from dataclasses import dataclass
+"""
+This module defines the Point class, representing coordinates on the chessboard.
+It also includes utility methods for converting between different coordinate systems (UCCI, ICCS).
+"""
+
+import dataclasses
 
 
-@dataclass
+@dataclasses.dataclass
 class Point:
+    """Represents a coordinate (x, y) on the chessboard."""
+
     x: int
     y: int
 

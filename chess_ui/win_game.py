@@ -26,9 +26,13 @@ BTN_RESTART_RECT = Rect(BUTTON_X, 710, BUTTON_WIDTH, BUTTON_HEIGHT)
 BTN_SAVE_RECT = Rect(BUTTON_X, 590, BUTTON_WIDTH, BUTTON_HEIGHT)
 
 
-def load_image(file):
-    "loads an image, prepares it for play"
-    file = os.path.join(main_dir, "Img", file)
+def load_image(file, name=None):
+    """
+    Loads an image from the disk.
+    """
+    if name is None:
+        # loads an image, prepares it for play
+        file = os.path.join(main_dir, "img", file)
     try:
         surface = pygame.image.load(file)
     except pygame.error:
@@ -38,21 +42,31 @@ def load_image(file):
     return surface.convert()
 
 
-def load_sound(file):
-    file = os.path.join(main_dir, "sounds", file)
+def load_sound(filename):
+    """
+    Loads a sound file from the disk.
+    """
+    filename = os.path.join(main_dir, "sounds", filename)
     try:
-        sound = pygame.mixer.Sound(file)
+        sound = pygame.mixer.Sound(filename)
     except pygame.error:
 
         class MockSound:
+            """
+            A mock sound class for when the mixer module is not initialized.
+            """
+
             def play(self):
-                pass
+                """Mock play method."""
 
         sound = MockSound()
     return sound
 
 
 def load_images(*files):
+    """
+    Loads multiple images from the disk.
+    """
     imgs = []
     for file in files:
         imgs.append(load_image(file))
@@ -60,6 +74,10 @@ def load_images(*files):
 
 
 class Chessman_Sprite(pygame.sprite.Sprite):
+    """
+    Represents a chess piece sprite for Pygame.
+    """
+
     is_selected = False
     images = []
     is_transparent = False
@@ -74,6 +92,9 @@ class Chessman_Sprite(pygame.sprite.Sprite):
         self.kill_sound = kill_sound
 
     def move(self, col_num, row_num):
+        """
+        Moves the sprite to a new position on the board.
+        """
         old_col_num = self.chessman.col_num
         old_row_num = self.chessman.row_num
         is_correct_position = self.chessman.move(col_num, row_num)
@@ -89,6 +110,9 @@ class Chessman_Sprite(pygame.sprite.Sprite):
         return False
 
     def update(self):
+        """
+        Updates the sprite state (e.g., transparency for selection).
+        """
         if self.is_selected:
             if self.is_transparent:
                 self.image = self.images[1]
@@ -100,6 +124,9 @@ class Chessman_Sprite(pygame.sprite.Sprite):
 
 
 def creat_sprite_group(sprite_group, chessmans_hash):
+    """
+    Creates sprite groups for all pieces on the board.
+    """
     for piece in chessmans_hash.values():
         if piece.is_red:
             if isinstance(piece, chessman.Rook):
@@ -145,7 +172,12 @@ def select_sprite_from_group(sprite_group, col_num, row_num):
             return sprite
 
 
-def translate_hit_area(screen_x, screen_y):
+def translate_hit_area(cursor, left, top, terminal_width, terminal_height):
+    """
+    Translates screen coordinates to board coordinates (col, row).
+    """
+    terminal_x = cursor[0] - left
+    screen_x, screen_y = cursor[0], cursor[1]  # Assuming cursor is (screen_x, screen_y)
     if screen_x > BOARD_WIDTH:
         return -1, -1
     return screen_x // 80, 9 - screen_y // 80
@@ -167,12 +199,24 @@ def draw_button(screen, rect, text, font):
     screen.blit(text_surf, text_rect)
 
 
+def get_sidebar_rect(terminal_width, terminal_height):
+    """
+    Calculates the sidebar rectangle area.
+    """
+    sidebar_width = 200
+    sidebar_rect = Rect(BOARD_WIDTH, 0, SIDEBAR_WIDTH, BOARD_HEIGHT)
+    return sidebar_rect
+
+
 def draw_sidebar(
     screen, chessboard, font, small_font, red_time, black_time, game_over_text=""
 ):
-    # Sidebar Background
-    sidebar_rect = Rect(BOARD_WIDTH, 0, SIDEBAR_WIDTH, BOARD_HEIGHT)
-    pygame.draw.rect(screen, (220, 220, 220), sidebar_rect)
+    """
+    Draws the sidebar, including the undo button and move history.
+    """
+    sidebar_rect = get_sidebar_rect(0, 0)
+    SIDEBAR_COLOR = (240, 230, 210)
+    pygame.draw.rect(screen, SIDEBAR_COLOR, sidebar_rect)
 
     # Border line
     pygame.draw.line(
@@ -237,6 +281,9 @@ def draw_sidebar(
 
 
 def main(winstyle=0):
+    """
+    Main function to run the Pygame UI.
+    """
     pygame.mixer.init()
     pygame.init()
     bestdepth = pygame.display.mode_ok(SCREENRECT.size, winstyle, 32)
@@ -355,7 +402,9 @@ def main(winstyle=0):
                     if game_over_text:
                         continue
 
-                    col_num, row_num = translate_hit_area(mouse_x, mouse_y)
+                    col_num, row_num = translate_hit_area(
+                        (mouse_x, mouse_y), 0, 0, BOARD_WIDTH, BOARD_HEIGHT
+                    )
                     if col_num < 0:
                         continue
 
@@ -363,11 +412,11 @@ def main(winstyle=0):
                         chessmans, col_num, row_num
                     )
 
-                    if current_chessman is None and chessman_sprite != None:
+                    if current_chessman is None and chessman_sprite is not None:
                         if chessman_sprite.chessman.is_red == cbd.is_red_turn:
                             current_chessman = chessman_sprite
                             chessman_sprite.is_selected = True
-                    elif current_chessman != None and chessman_sprite != None:
+                    elif current_chessman is not None and chessman_sprite is not None:
                         if chessman_sprite.chessman.is_red == cbd.is_red_turn:
                             current_chessman.is_selected = False
                             current_chessman = chessman_sprite
@@ -375,12 +424,12 @@ def main(winstyle=0):
                         else:
                             success = current_chessman.move(col_num, row_num)
                             if success:
-                                current_chessman.Kill_sound.play()
+                                current_chessman.kill_sound.play()
                                 chessmans.remove(chessman_sprite)
                                 chessman_sprite.kill()
                                 current_chessman.is_selected = False
                                 current_chessman = None
-                    elif current_chessman != None and chessman_sprite is None:
+                    elif current_chessman is not None and chessman_sprite is None:
                         success = current_chessman.move(col_num, row_num)
                         if success:
                             current_chessman.is_selected = False
