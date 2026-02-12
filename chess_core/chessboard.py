@@ -1,4 +1,4 @@
-"""
+﻿"""
 This module defines the Chessboard class, which represents the game state, board configuration,
 and game logic. It handles moving pieces, turn management, history tracking, and game end conditions.
 """
@@ -8,16 +8,21 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 import copy
 
-from MyChess.Chess_Core import chessman
+from my_chess.chess_core import chessman
 
 if TYPE_CHECKING:
-    from MyChess.Chess_Core.chessman import Chessman as ChessmanType
+    from my_chess.chess_core.chessman import Chessman as ChessmanType
 
 
 class Chessboard:
+    """
+    Represents the chess board and game state.
+    Manages pieces, turns, history, and game logic.
+    """
+
     def __init__(self, name: str) -> None:
         self.__name = name
-        self.__is_red_turn = True
+        self._is_red_turn = True
         # Initialize 9x10 board with None
         self.__chessmans: List[List[Optional[ChessmanType]]] = [
             ([None] * 10) for _ in range(9)
@@ -32,7 +37,7 @@ class Chessboard:
         self.moves_history: List[str] = []
         self.undo_stack: List[Any] = []
 
-        from MyChess.Chess_Core.zobrist import Zobrist
+        from my_chess.chess_core.zobrist import Zobrist
 
         self.zobrist = Zobrist()
         self.current_hash = 0
@@ -40,10 +45,12 @@ class Chessboard:
 
     @property
     def is_red_turn(self) -> bool:
-        return self.__is_red_turn
+        """Returns True if it is currently Red's turn."""
+        return self._is_red_turn
 
     @property
     def name(self) -> str:
+        """Returns the name of the chessboard."""
         return self.__name
 
     @name.setter
@@ -52,13 +59,16 @@ class Chessboard:
 
     @property
     def chessmans(self) -> List[List[Optional[ChessmanType]]]:
+        """Returns the 2D grid of chess pieces."""
         return self.__chessmans
 
     @property
     def chessmans_hash(self) -> Dict[str, ChessmanType]:
+        """Returns a dictionary of all active chess pieces by name."""
         return self.__chessmans_hash
 
     def init_board(self) -> None:
+        """Initializes the board with the standard layout of pieces."""
         # Red Pieces
         chessman.Rook(" 车l红 ", "red_rook_left", True, self).add_to_board(0, 0)
         chessman.Rook(" 车r红 ", "red_rook_right", True, self).add_to_board(8, 0)
@@ -112,31 +122,37 @@ class Chessboard:
         self.hash_history = {self.current_hash: 1}
 
     def add_chessman(self, piece: ChessmanType, col_num: int, row_num: int) -> None:
+        """Adds a piece to the board at the specified coordinates."""
         self.chessmans[col_num][row_num] = piece
         if piece.name not in self.__chessmans_hash:
             self.__chessmans_hash[piece.name] = piece
 
     def remove_chessman_target(self, col_num: int, row_num: int) -> None:
+        """Removes a piece from the board at the target coordinates (capture)."""
         chessman_old = self.get_chessman(col_num, row_num)
         if chessman_old is not None:
             self.__chessmans_hash.pop(chessman_old.name)
 
     def remove_chessman_source(self, col_num: int, row_num: int) -> None:
+        """Removes a piece from the board at the source coordinates (move away)."""
         self.chessmans[col_num][row_num] = None
 
     def calc_chessmans_moving_list(self) -> None:
+        """Calculates valid moves for all pieces of the current turn's color."""
         for piece in self.__chessmans_hash.values():
-            if piece.is_red == self.__is_red_turn:
+            if piece.is_red == self._is_red_turn:
                 piece.calc_moving_list()
 
     def clear_chessmans_moving_list(self) -> None:
+        """Clears the valid moves list for all pieces."""
         for piece in self.__chessmans_hash.values():
             piece.clear_moving_list()
 
     def move_chessman(self, piece: ChessmanType, col_num: int, row_num: int) -> bool:
-        if piece.is_red == self.__is_red_turn:
+        """Moves a piece to the target coordinates, handling captures and turn switching."""
+        if piece.is_red == self._is_red_turn:
             # Record move BEFORE moving
-            from MyChess.Chess_Core.move_notation import MoveNotation
+            from my_chess.chess_core.move_notation import MoveNotation
 
             move_str = MoveNotation.get_move_name(
                 piece, piece.col_num, piece.row_num, col_num, row_num
@@ -177,18 +193,19 @@ class Chessboard:
 
             self.remove_chessman_target(col_num, row_num)
             self.add_chessman(piece, col_num, row_num)
-            self.__is_red_turn = not self.__is_red_turn
+            self._is_red_turn = not self._is_red_turn
             return True
         else:
             print("the wrong turn")
             return False
 
     def undo_move(self) -> bool:
+        """Undoes the last move, restoring board state, history, and turn."""
         if not self.undo_stack:
             return False
 
         last_move = self.undo_stack.pop()
-        chessman = last_move["chessman"]
+        piece = last_move["chessman"]
         from_col = last_move["from_col"]
         from_row = last_move["from_row"]
         to_col = last_move["to_col"]
@@ -204,23 +221,21 @@ class Chessboard:
 
         # Revert Hash (Apply XOR again to go back)
         self.current_hash = self.zobrist.update_hash(
-            self.current_hash, chessman, from_col, from_row, to_col, to_row, captured
+            self.current_hash, piece, from_col, from_row, to_col, to_row, captured
         )
 
         # 1. Move chessman back
         self.remove_chessman_source(to_col, to_row)
 
         # Update internal position
-        chessman._Chessman__position.x = from_col
-        chessman._Chessman__position.y = from_row
+        piece.update_position(from_col, from_row)
 
         # Place back on board
-        self.chessmans[from_col][from_row] = chessman
+        self.chessmans[from_col][from_row] = piece
 
         # 2. Restore captured piece
         if captured:
-            captured._Chessman__position.x = to_col
-            captured._Chessman__position.y = to_row
+            captured.update_position(to_col, to_row)
             self.chessmans[to_col][to_row] = captured
             self.__chessmans_hash[captured.name] = captured
             captured.is_alive = True
@@ -231,11 +246,12 @@ class Chessboard:
             self.moves_history.pop()
 
         # 4. Flip turn
-        self.__is_red_turn = not self.__is_red_turn
+        self._is_red_turn = not self._is_red_turn
 
         return True
 
     def get_winner(self) -> Optional[str]:
+        """Checks if there is a winner (returns 'Red', 'Black', 'Draw', or None)."""
         # Check Repetition Draw
         if self.hash_history.get(self.current_hash, 0) >= 3:
             return "Draw"
@@ -251,9 +267,11 @@ class Chessboard:
         return None
 
     def is_end(self) -> bool:
+        """Checks if the game has ended."""
         return self.get_winner() is not None
 
     def update_history(self, piece: ChessmanType, col_num: int, row_num: int) -> None:
+        """Updates the move history for repetition detection."""
         red_or_black_key = self.red_or_black(piece)
         history_chessman = self.__history[red_or_black_key]["chessman"]
         history_pos = self.__history[red_or_black_key]["last_pos"]
@@ -273,15 +291,18 @@ class Chessboard:
         )
 
     def red_or_black(self, piece: ChessmanType) -> str:
+        """Returns 'red' or 'black' string based on piece color."""
         if piece.is_red:
             return "red"
         else:
             return "black"
 
     def get_chessman(self, col_num: int, row_num: int) -> Optional[ChessmanType]:
+        """Returns the chessman at the specified coordinates."""
         return self.__chessmans[col_num][row_num]
 
     def get_chessman_by_name(self, name: str) -> Optional[ChessmanType]:
+        """Returns a chessman by its unique name."""
         if name in self.__chessmans_hash:
             return self.__chessmans_hash[name]
         return None
@@ -289,6 +310,7 @@ class Chessboard:
     def get_top_first_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the first chessman above the given position."""
         for i in range(row_num + 1, 10, 1):
             current = self.chessmans[col_num][i]
             if current is not None:
@@ -298,6 +320,7 @@ class Chessboard:
     def get_bottom_first_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the first chessman below the given position."""
         for i in range(row_num - 1, -1, -1):
             current = self.chessmans[col_num][i]
             if current is not None:
@@ -307,6 +330,7 @@ class Chessboard:
     def get_left_first_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the first chessman to the left of the given position."""
         for i in range(col_num - 1, -1, -1):
             current = self.chessmans[i][row_num]
             if current is not None:
@@ -316,6 +340,7 @@ class Chessboard:
     def get_right_first_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the first chessman to the right of the given position."""
         for i in range(col_num + 1, 9, 1):
             current = self.chessmans[i][row_num]
             if current is not None:
@@ -325,6 +350,7 @@ class Chessboard:
     def get_top_second_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the second chessman above the given position."""
         count = 0
         for i in range(row_num + 1, 10, 1):
             current = self.chessmans[col_num][i]
@@ -338,6 +364,7 @@ class Chessboard:
     def get_bottom_second_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the second chessman below the given position."""
         count = 0
         for i in range(row_num - 1, -1, -1):
             current = self.chessmans[col_num][i]
@@ -351,6 +378,7 @@ class Chessboard:
     def get_left_second_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the second chessman to the left of the given position."""
         count = 0
         for i in range(col_num - 1, -1, -1):
             current = self.chessmans[i][row_num]
@@ -364,6 +392,7 @@ class Chessboard:
     def get_right_second_chessman(
         self, col_num: int, row_num: int
     ) -> Optional[ChessmanType]:
+        """Finds the second chessman to the right of the given position."""
         count = 0
         for i in range(col_num + 1, 9, 1):
             current = self.chessmans[i][row_num]
@@ -375,6 +404,7 @@ class Chessboard:
         return None
 
     def print_to_cl(self) -> None:
+        """Prints the current board state to the command line."""
         screen = "\r\n"
         for i in range(9, -1, -1):
             for j in range(9):
@@ -433,9 +463,7 @@ class Chessboard:
         turn_fen = parts[1] if len(parts) > 1 else "w"
 
         # 'w' or 'r' -> Red turn
-        board._Chessboard__is_red_turn = (
-            turn_fen.lower() == "w" or turn_fen.lower() == "r"
-        )
+        board._is_red_turn = turn_fen.lower() == "w" or turn_fen.lower() == "r"
 
         rows = board_fen.split("/")
         if len(rows) != 10:

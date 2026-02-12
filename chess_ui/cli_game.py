@@ -2,10 +2,11 @@
 This module provides a command-line interface (CLI) for playing Chinese Chess.
 """
 
-from MyChess.chess_core import chessboard
+from my_chess.chess_core import chessboard
 
 
 def print_chessman_name(chessman):
+    """Prints the name of the given chessman, or 'None' if it is None."""
     if chessman:
         print(chessman.name)
     else:

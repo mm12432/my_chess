@@ -1,4 +1,4 @@
-# MyChess (AlphaZero Remake)
+# my_chess (AlphaZero Remake)
 一个基于 Pygame 的中国象棋 Python 实现，目前正在升级以包含 AlphaZero 风格的 AI。
 
 [English](README.md) | [中文](README_CN.md)
@@ -20,8 +20,8 @@
 
 1. **克隆仓库**
    ```bash
-   git clone https://github.com/mm12432/MyChess.git
-   cd MyChess
+   git clone https://github.com/mm12432/my_chess.git
+   cd my_chess
    ```
 
 2. **设置虚拟环境** (推荐)

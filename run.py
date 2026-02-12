@@ -1,4 +1,3 @@
-import os
 import sys
 from pathlib import Path
 
@@ -6,11 +5,11 @@ from pathlib import Path
 def setup_path():
     """
     Add the project's parent directory to sys.path to ensure
-    top-level package 'MyChess' can be imported.
+    top-level package 'my_chess' can be imported.
     """
     # Get the directory containing this script (project root)
     root_dir = Path(__file__).resolve().parent
-    # We need to add the PARENT of the root dir, so that 'MyChess'
+    # We need to add the PARENT of the root dir, so that 'my_chess'
     # can be resolved as a package.
     parent_dir = root_dir.parent
     if str(parent_dir) not in sys.path:
@@ -24,7 +23,7 @@ def main():
     # Check arguments to decide which mode to run (GUI or CLI)
     if len(sys.argv) > 1 and sys.argv[1] == "cli":
         try:
-            from MyChess.Chess_UI import cli_game
+            from my_chess.chess_ui import cli_game
 
             print("Starting CLI Game...")
             cli_game.main()
@@ -33,7 +32,7 @@ def main():
             sys.exit(1)
     else:
         try:
-            from MyChess.Chess_UI import win_game
+            from my_chess.chess_ui import win_game
 
             print("Starting GUI Game...")
             win_game.main()

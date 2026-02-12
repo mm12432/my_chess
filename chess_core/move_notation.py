@@ -2,7 +2,7 @@
 This module handles the generation of standard Chinese Chess notation (e.g., "Cannon 2 moves 5").
 """
 
-from MyChess.chess_core import chessman
+from my_chess.chess_core import chessman
 
 
 class MoveNotation:
@@ -40,11 +40,9 @@ class MoveNotation:
         # Red: 1 is at x=8, 9 is at x=0
         # Black: 1 is at x=0, 9 is at x=8
         if is_red:
-            from_col_calc = 9 - from_col
-            to_col_calc = 9 - to_col
+            pass
         else:
-            from_col_calc = from_col + 1
-            to_col_calc = to_col + 1
+            pass
 
         # Determine direction
         # y increases upwards (0 is bottom, 9 is top)

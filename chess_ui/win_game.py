@@ -8,8 +8,8 @@ and the sidebar UI.
 import sys
 import os
 import pygame
-from pygame.locals import Rect, MOUSEBUTTONDOWN
-from MyChess.Chess_Core import chessboard, chessman
+from pygame.locals import Rect
+from my_chess.chess_core import chessboard, chessman
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 BOARD_WIDTH = 720
@@ -73,7 +73,7 @@ def load_images(*files):
     return imgs
 
 
-class Chessman_Sprite(pygame.sprite.Sprite):
+class ChessmanSprite(pygame.sprite.Sprite):
     """
     Represents a chess piece sprite for Pygame.
     """
@@ -162,28 +162,34 @@ def creat_sprite_group(sprite_group, chessmans_hash):
             kill_sound = load_sound("explosion.mp3")
         else:
             kill_sound = load_sound("berserk.mp3")
-        chessman_sprite = Chessman_Sprite(images, kill_sound, piece)
+        chessman_sprite = ChessmanSprite(images, kill_sound, piece)
         sprite_group.add(chessman_sprite)
 
 
 def select_sprite_from_group(sprite_group, col_num, row_num):
+    """
+    Selects a sprite from the group based on board coordinates.
+    """
     for sprite in sprite_group:
         if sprite.chessman.col_num == col_num and sprite.chessman.row_num == row_num:
             return sprite
 
 
-def translate_hit_area(cursor, left, top, terminal_width, terminal_height):
+def translate_hit_area(cursor):
     """
     Translates screen coordinates to board coordinates (col, row).
     """
-    terminal_x = cursor[0] - left
-    screen_x, screen_y = cursor[0], cursor[1]  # Assuming cursor is (screen_x, screen_y)
+    # terminal_x = cursor[0] - left  # Unused
+    screen_x, screen_y = cursor[0], cursor[1]
     if screen_x > BOARD_WIDTH:
         return -1, -1
     return screen_x // 80, 9 - screen_y // 80
 
 
 def draw_button(screen, rect, text, font):
+    """
+    Draws a button with a shadow and text.
+    """
     # Draw shadow
     shadow_rect = rect.copy()
     shadow_rect.move_ip(2, 2)
@@ -199,22 +205,22 @@ def draw_button(screen, rect, text, font):
     screen.blit(text_surf, text_rect)
 
 
-def get_sidebar_rect(terminal_width, terminal_height):
+def get_sidebar_rect():
     """
     Calculates the sidebar rectangle area.
     """
-    sidebar_width = 200
+    # sidebar_width = 200 # Unused
     sidebar_rect = Rect(BOARD_WIDTH, 0, SIDEBAR_WIDTH, BOARD_HEIGHT)
     return sidebar_rect
 
 
 def draw_sidebar(
-    screen, chessboard, font, small_font, red_time, black_time, game_over_text=""
+    screen, board, font, small_font, red_time, black_time, game_over_text=""
 ):
     """
     Draws the sidebar, including the undo button and move history.
     """
-    sidebar_rect = get_sidebar_rect(0, 0)
+    sidebar_rect = get_sidebar_rect()
     SIDEBAR_COLOR = (240, 230, 210)
     pygame.draw.rect(screen, SIDEBAR_COLOR, sidebar_rect)
 
@@ -227,7 +233,7 @@ def draw_sidebar(
     if game_over_text:
         text = game_over_text
         color = (0, 0, 200)  # Blue for result
-    elif chessboard.is_red_turn:
+    elif board.is_red_turn:
         text = "红方走棋"
         color = (200, 0, 0)
     else:
@@ -264,15 +270,15 @@ def draw_sidebar(
 
         start_y = 210
         # Show last 15 moves to save space
-        recent_moves = chessboard.moves_history[-15:]
+        recent_moves = board.moves_history[-15:]
         for i, move in enumerate(recent_moves):
-            move_idx = len(chessboard.moves_history) - len(recent_moves) + i + 1
+            move_idx = len(board.moves_history) - len(recent_moves) + i + 1
             pl_color = (150, 0, 0) if (move_idx % 2 == 1) else (0, 0, 0)
             move_text = small_font.render(f"{move_idx}. {move}", True, pl_color)
             screen.blit(move_text, (BOARD_WIDTH + 20, start_y + i * 24))
 
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"Sidebar drawing error: {e}")
 
     # Draw Buttons
     draw_button(screen, BTN_SAVE_RECT, "保存FEN", small_font)
@@ -294,7 +300,7 @@ def main(winstyle=0):
     try:
         bgdtile = load_image("boardchess.gif")
         load_sound("dong.mp3").play()
-    except:
+    except pygame.error:
         bgdtile = pygame.Surface((80, 80))
         bgdtile.fill((200, 200, 150))
 
@@ -303,7 +309,7 @@ def main(winstyle=0):
     try:
         font = pygame.font.SysFont(font_name, 36)
         small_font = pygame.font.SysFont(font_name, 24)
-    except:
+    except pygame.error:
         font = pygame.font.SysFont("arial", 36)
         small_font = pygame.font.SysFont("arial", 24)
 
@@ -358,7 +364,7 @@ def main(winstyle=0):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
-            elif event.type == MOUSEBUTTONDOWN:
+            elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     mouse_x, mouse_y = pygame.mouse.get_pos()
 
@@ -368,7 +374,7 @@ def main(winstyle=0):
                         print(f"FEN Saved: {fen}")
                         continue
 
-                    elif BTN_RESTART_RECT.collidepoint(mouse_x, mouse_y):
+                    if BTN_RESTART_RECT.collidepoint(mouse_x, mouse_y):
                         cbd = chessboard.Chessboard("000")
                         cbd.init_board()
                         chessmans.empty()
@@ -381,12 +387,12 @@ def main(winstyle=0):
                         print("Restarted.")
                         continue
 
-                    elif BTN_UNDO_RECT.collidepoint(mouse_x, mouse_y):
+                    if BTN_UNDO_RECT.collidepoint(mouse_x, mouse_y):
                         if (
                             not game_over_text
                         ):  # Allow undo only if game not over? Or allow to revert checkmate?
                             # Standard is allowing undo even after checkmate to analyze
-                            # But if game_over_text is set, 'winner' is set. Undo should clear winner.
+                            # If game_over_text is set, 'winner' is set. Undo clears it.
                             pass
 
                         if cbd.undo_move():
@@ -402,9 +408,7 @@ def main(winstyle=0):
                     if game_over_text:
                         continue
 
-                    col_num, row_num = translate_hit_area(
-                        (mouse_x, mouse_y), 0, 0, BOARD_WIDTH, BOARD_HEIGHT
-                    )
+                    col_num, row_num = translate_hit_area((mouse_x, mouse_y))
                     if col_num < 0:
                         continue
 

@@ -3,7 +3,7 @@ requires = ["setuptools>=61.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "MyChess"
+name = "my_chess"
 version = "1.1.0"
 description = "A Python implementation of Chinese Chess (Xiangqi) empowered by AlphaZero"
 readme = "README.md"
@@ -32,7 +32,7 @@ dev = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/mm12432/MyChess"
+Homepage = "https://github.com/mm12432/my_chess"
 
 [tool.black]
 line-length = 88

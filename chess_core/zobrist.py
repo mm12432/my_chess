@@ -8,7 +8,7 @@ import random
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from MyChess.Chess_Core import chessboard, chessman
+    from my_chess.chess_core import chessboard, chessman
 
 
 class Zobrist:

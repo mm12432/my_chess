@@ -5,7 +5,7 @@ import os
 # Add project parent directory to path
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from MyChess.Chess_Core.Point import Point
+from my_chess.chess_core.point import Point
 
 
 class TestUCCI(unittest.TestCase):

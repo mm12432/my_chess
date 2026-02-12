@@ -1,4 +1,4 @@
-"""
+﻿"""
 This module defines the Chessman class and its subclasses (Rook, Knight, Cannon, etc.),
 representing the pieces in Chinese Chess. It handles piece movement logic and validation.
 """
@@ -7,49 +7,61 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, List, Optional
 
-from MyChess.Chess_Core import point as point_lib
+from my_chess.chess_core import point as point_lib
 
 if TYPE_CHECKING:
-    from MyChess.Chess_Core.chessboard import Chessboard
+    from my_chess.chess_core.chessboard import Chessboard
 
 
 def num_between(max_num: int, min_num: int, current: int) -> bool:
+    """Checks if a number is between max and min (inclusive)."""
     return current >= min_num and current <= max_num
 
 
 def creat_points(
     list_points: List[point_lib.Point], list_vs: tuple, list_hs: tuple
 ) -> None:
+    """Helper to create Point objects from coordinate tuples and add to list."""
     for v in list_vs:
         for h in list_hs:
             list_points.append(point_lib.Point(v, h))
 
 
 class Chessman:
+    """
+    Base class for all chess pieces.
+    Handles common properties like position, color, and movement validation.
+    """
+
     def __init__(
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
         self.__name = name
         self.__is_red = is_red
         self.__chessboard = chessboard
-        self.__position = point_lib.Point(0, 0)  # Initialize with dummy values
+        self._position = point_lib.Point(0, 0)  # Initialize with dummy values
         self.__moving_list: List[point_lib.Point] = []
-        self.__top = 9
-        self.__bottom = 0
-        self.__left = 0
-        self.__right = 8
+        self._top = 9
+        self._bottom = 0
+        self._left = 0
+        self._right = 8
         self.__is_alive = True
         self.__name_cn = name_cn
 
     @property
     def row_num(self) -> int:
         """Returns the row number of the piece."""
-        return self.__position.y
+        return self._position.y
 
     @property
     def col_num(self) -> int:
         """Returns the column number of the piece."""
-        return self.__position.x
+        return self._position.x
+
+    def update_position(self, col: int, row: int) -> None:
+        """Updates the position of the piece."""
+        self._position.x = col
+        self._position.y = row
 
     @property
     def is_alive(self) -> bool:
@@ -89,7 +101,7 @@ class Chessman:
     @property
     def position(self) -> point_lib.Point:
         """Returns the current position/point of the piece."""
-        return self.__position
+        return self._position
 
     @property
     def moving_list(self) -> List[point_lib.Point]:
@@ -103,8 +115,8 @@ class Chessman:
     def add_to_board(self, col_num: int, row_num: int) -> None:
         """Adds the piece to the board at the specified position."""
         if self.border_check(col_num, row_num):
-            self.__position.x = col_num
-            self.__position.y = row_num
+            self._position.x = col_num
+            self._position.y = row_num
             self.__chessboard.add_chessman(self, col_num, row_num)
         else:
             print("the wrong position")
@@ -112,16 +124,14 @@ class Chessman:
     def move(self, col_num: int, row_num: int) -> bool:
         """Moves the piece to the specified position if valid."""
         if self.in_moving_list(col_num, row_num):
-            self.__chessboard.remove_chessman_source(
-                self.__position.x, self.__position.y
-            )
+            self.__chessboard.remove_chessman_source(self._position.x, self._position.y)
             self.__chessboard.update_history(self, col_num, row_num)
-            self.__position.x = col_num
-            self.__position.y = row_num
+            self._position.x = col_num
+            self._position.y = row_num
             return self.__chessboard.move_chessman(self, col_num, row_num)
-        else:
-            print("the wrong target_position")
-            return False
+
+        print("the wrong target_position")
+        return False
 
     def in_moving_list(self, col_num: int, row_num: int) -> bool:
         """Checks if the target position is in the piece's moving list."""
@@ -132,12 +142,11 @@ class Chessman:
 
     def calc_moving_list(self) -> None:
         """Calculates the list of valid moving points. To be implemented by subclasses."""
-        pass
 
     def border_check(self, col_num: int, row_num: int) -> bool:
         """Checks if the given position is within the valid board area for this piece."""
-        return num_between(self.__top, self.__bottom, row_num) and num_between(
-            self.__right, self.__left, col_num
+        return num_between(self._top, self._bottom, row_num) and num_between(
+            self._right, self._left, col_num
         )
 
     def calc_moving_path(
@@ -209,10 +218,10 @@ class Rook(Chessman):
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
-        self._Chessman__top = 9
-        self._Chessman__bottom = 0
-        self._Chessman__left = 0
-        self._Chessman__right = 8
+        self._top = 9
+        self._bottom = 0
+        self._left = 0
+        self._right = 8
 
     @property
     def fen_char(self) -> str:
@@ -271,10 +280,10 @@ class Knight(Chessman):
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
-        self._Chessman__top = 9
-        self._Chessman__bottom = 0
-        self._Chessman__left = 0
-        self._Chessman__right = 8
+        self._top = 9
+        self._bottom = 0
+        self._left = 0
+        self._right = 8
 
     @property
     def fen_char(self) -> str:
@@ -320,10 +329,10 @@ class Cannon(Chessman):
         self, name_cn: str, name: str, is_red: bool, chessboard: Chessboard
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
-        self._Chessman__top = 9
-        self._Chessman__bottom = 0
-        self._Chessman__left = 0
-        self._Chessman__right = 8
+        self._top = 9
+        self._bottom = 0
+        self._left = 0
+        self._right = 8
 
     @property
     def fen_char(self) -> str:
@@ -409,15 +418,15 @@ class Mandarin(Chessman):
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
         if self.is_red:
-            self._Chessman__top = 2
-            self._Chessman__bottom = 0
-            self._Chessman__left = 3
-            self._Chessman__right = 5
+            self._top = 2
+            self._bottom = 0
+            self._left = 3
+            self._right = 5
         else:
-            self._Chessman__top = 9
-            self._Chessman__bottom = 7
-            self._Chessman__left = 3
-            self._Chessman__right = 5
+            self._top = 9
+            self._bottom = 7
+            self._left = 3
+            self._right = 5
 
     @property
     def fen_char(self) -> str:
@@ -443,15 +452,15 @@ class Elephant(Chessman):
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
         if self.is_red:
-            self._Chessman__top = 4
-            self._Chessman__bottom = 0
-            self._Chessman__left = 0
-            self._Chessman__right = 8
+            self._top = 4
+            self._bottom = 0
+            self._left = 0
+            self._right = 8
         else:
-            self._Chessman__top = 9
-            self._Chessman__bottom = 5
-            self._Chessman__left = 0
-            self._Chessman__right = 8
+            self._top = 9
+            self._bottom = 5
+            self._left = 0
+            self._right = 8
 
     @property
     def fen_char(self) -> str:
@@ -484,17 +493,17 @@ class Pawn(Chessman):
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
         if self.is_red:
-            self._Chessman__top = 9
-            self._Chessman__bottom = 3
-            self._Chessman__left = 0
-            self._Chessman__right = 8
+            self._top = 9
+            self._bottom = 3
+            self._left = 0
+            self._right = 8
             self.__direction = 1
             self.__river = 5
         else:
-            self._Chessman__top = 6
-            self._Chessman__bottom = 0
-            self._Chessman__left = 0
-            self._Chessman__right = 8
+            self._top = 6
+            self._bottom = 0
+            self._left = 0
+            self._right = 8
             self.__direction = -1
             self.__river = 4
 
@@ -524,15 +533,15 @@ class King(Chessman):
     ) -> None:
         super().__init__(name_cn, name, is_red, chessboard)
         if self.is_red:
-            self._Chessman__top = 2
-            self._Chessman__bottom = 0
-            self._Chessman__left = 3
-            self._Chessman__right = 5
+            self._top = 2
+            self._bottom = 0
+            self._left = 3
+            self._right = 5
         else:
-            self._Chessman__top = 9
-            self._Chessman__bottom = 7
-            self._Chessman__left = 3
-            self._Chessman__right = 5
+            self._top = 9
+            self._bottom = 7
+            self._left = 3
+            self._right = 5
 
     @property
     def fen_char(self) -> str:

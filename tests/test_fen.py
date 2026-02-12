@@ -2,10 +2,10 @@ import unittest
 import sys
 import os
 
-# Add project parent directory to path to allow importing MyChess as a package
+# Add project parent directory to path to allow importing my_chess as a package
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from MyChess.Chess_Core.Chessboard import Chessboard
+from my_chess.chess_core.chessboard import Chessboard
 
 
 class TestFEN(unittest.TestCase):
@@ -13,8 +13,8 @@ class TestFEN(unittest.TestCase):
         board = Chessboard("test")
         board.init_board()
         fen = board.to_fen()
-        # Note: MyChess might define red/black sides differently than standard FEN?
-        # In MyChess: Row 0 is Red (Bottom), Row 9 is Black (Top).
+        # Note: my_chess might define red/black sides differently than standard FEN?
+        # In my_chess: Row 0 is Red (Bottom), Row 9 is Black (Top).
         # FEN usually goes from Rank 9 (Top/Black) to Rank 0 (Bottom/Red).
         # My implementation of to_fen iterates 9 down to 0.
         # So row 9 (Black pieces) should come first.

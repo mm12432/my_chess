@@ -1,4 +1,4 @@
-# MyChess (AlphaZero Remake)
+# my_chess (AlphaZero Remake)
 A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being upgraded to include an AlphaZero-style AI.
 
 [English](README.md) | [中文](README_CN.md)
@@ -20,8 +20,8 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
 
 1. **Clone the repository**
    ```bash
-   git clone https://github.com/mm12432/MyChess.git
-   cd MyChess
+   git clone https://github.com/mm12432/my_chess.git
+   cd my_chess
    ```
 
 2. **Set up Virtual Environment** (Recommended)
