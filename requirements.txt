@@ -9,3 +9,4 @@ pygame==2.6.1
 pytest>=7.0.0
 black>=23.0.0
 isort>=5.0.0
+pylint>=3.0.0

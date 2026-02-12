@@ -343,8 +343,6 @@ def main(winstyle=0):
                 game_over_text = "红方胜!"
             elif winner == "Black":
                 game_over_text = "黑方胜!"
-            elif winner == "Draw":
-                game_over_text = "和 棋!"
         else:
             game_over_text = ""
 

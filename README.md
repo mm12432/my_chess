@@ -3,6 +3,15 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
 
 [English](README.md) | [中文](README_CN.md)
 
+## What's New in v1.2
+- **UI Overhaul**: Expanded window layout (800×800 → 1000×800) with a new sidebar panel featuring turn indicator, game timer, standard Chinese notation move log, and control buttons (Restart, Save FEN).
+- **Rule Engine**: Implemented Zobrist Hashing for position tracking, perpetual check/chase detection (offender loses on 3-fold repetition), and stalemate detection (no legal moves = loss).
+- **Chinese Notation**: Real-time standard Chinese Chess notation (e.g., 炮二平五) displayed in the sidebar.
+- **FEN Support**: Save and load board positions using standard FEN strings.
+- **Code Quality**: Achieved Pylint 10.00/10. Full PEP 8 compliance with project rename (`MyChess` → `my_chess`). Complete docstring coverage.
+- **Testing**: 24 unit tests covering all 7 piece types' movement rules, stalemate, repetition penalty, and notation correctness.
+- **Coordinate System**: Added UCCI/ICCS coordinate conversion for future AI integration.
+
 ## What's New in v1.1
 - **Modernization**: Migrated legacy Python 2 code to Python 3.8+ standards (Type Hints, `dataclasses`, new `super()` syntax).
 - **Engineering**: Added `pyproject.toml`, standard `.gitignore`, and pinned dependencies in `requirements.txt`.

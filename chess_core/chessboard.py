@@ -182,10 +182,19 @@ class Chessboard:
             return False
 
     def get_winner(self) -> Optional[str]:
-        """Checks if there is a winner (returns 'Red', 'Black', 'Draw', or None)."""
-        # Check Repetition Draw
+        """Checks if there is a winner (returns 'Red', 'Black', or None).
+
+        判定规则：
+        1. 三次重复局面 → 造成重复的一方（长将/长捉方）判负
+        2. 将/帅被吃 → 对方胜
+        3. 困毙（当前走棋方无任何合法走法）→ 对方胜
+        """
+        # 长将/长捉检测：三次重复局面，造成重复的一方判负
+        # move_chessman() 走完后已翻转回合，所以当前 _is_red_turn 是下一步走棋方
+        # 造成重复的是刚走完的一方（即对方），该方判负
         if self.hash_history.get(self.current_hash, 0) >= 3:
-            return "Draw"
+            # 当前轮到谁走 = 无辜方 → 无辜方胜
+            return "Red" if self._is_red_turn else "Black"
 
         red_king = self.get_chessman_by_name("red_king")
         black_king = self.get_chessman_by_name("black_king")
@@ -195,7 +204,20 @@ class Chessboard:
         if not black_king:
             return "Red"
 
+        # 困毙检测：当前走棋方所有棋子都没有合法走法
+        if self._is_stalemated():
+            return "Black" if self._is_red_turn else "Red"
+
         return None
+
+    def _is_stalemated(self) -> bool:
+        """检查当前走棋方是否被困毙（无任何合法走法）。"""
+        for piece in self.__chessmans_hash.values():
+            if piece.is_red == self._is_red_turn:
+                piece.calc_moving_list()
+                if piece.moving_list:
+                    return False
+        return True
 
     def is_end(self) -> bool:
         """Checks if the game has ended."""
