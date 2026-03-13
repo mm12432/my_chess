@@ -3,9 +3,9 @@ import sys
 import pygame
 import random
 import os.path
-from MyChess.Chess_Core import Chessboard
-from MyChess.Chess_Core import Point
-from MyChess.Chess_Core import Chessman
+from Chess_Core import Chessboard
+from Chess_Core import Point
+from Chess_Core import Chessman, Rook, Knight, Cannon, Elephant, Mandarin, King, Pawn
 from pygame.locals import *
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
@@ -79,36 +79,36 @@ class Chessman_Sprite(pygame.sprite.Sprite):
 def creat_sprite_group(sprite_group, chessmans_hash):
     for chessman in chessmans_hash.values():
         if chessman.is_red:
-            if isinstance(chessman, Chessman.Rook):
+            if isinstance(chessman, Rook):
                 images = load_images("red_rook.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Cannon):
+            elif isinstance(chessman, Cannon):
                 images = load_images("red_cannon.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Knight):
+            elif isinstance(chessman, Knight):
                 images = load_images("red_knight.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.King):
+            elif isinstance(chessman, King):
                 images = load_images("red_king.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Elephant):
+            elif isinstance(chessman, Elephant):
                 images = load_images("red_elephant.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Mandarin):
+            elif isinstance(chessman, Mandarin):
                 images = load_images("red_mandarin.gif", "transparent.gif")
             else:
                 images = load_images("red_pawn.gif", "transparent.gif")
         else:
-            if isinstance(chessman, Chessman.Rook):
+            if isinstance(chessman, Rook):
                 images = load_images("black_rook.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Cannon):
+            elif isinstance(chessman, Cannon):
                 images = load_images("black_cannon.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Knight):
+            elif isinstance(chessman, Knight):
                 images = load_images("black_knight.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.King):
+            elif isinstance(chessman, King):
                 images = load_images("black_king.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Elephant):
+            elif isinstance(chessman, Elephant):
                 images = load_images("black_elephant.gif", "transparent.gif")
-            elif isinstance(chessman, Chessman.Mandarin):
+            elif isinstance(chessman, Mandarin):
                 images = load_images("black_mandarin.gif", "transparent.gif")
             else:
                 images = load_images("black_pawn.gif", "transparent.gif")
-        if isinstance(chessman,Chessman.Cannon):
+        if isinstance(chessman, Cannon):
             Kill_sound = load_sound("explosion.mp3")
         else:
             Kill_sound = load_sound("berserk.mp3")
