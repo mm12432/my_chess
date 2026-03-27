@@ -5,9 +5,11 @@ and game logic. It handles moving pieces, turn management, history tracking, and
 
 from __future__ import annotations
 
+import copy
 from typing import TYPE_CHECKING, Dict, List, Optional
 
 from my_chess.chess_core import chessman
+from my_chess.chess_core.move import Move
 
 if TYPE_CHECKING:
     from my_chess.chess_core.chessman import Chessman as ChessmanType
@@ -144,6 +146,49 @@ class Chessboard:
         """Clears the valid moves list for all pieces."""
         for piece in self.__chessmans_hash.values():
             piece.clear_moving_list()
+
+    def get_legal_moves(self) -> List[Move]:
+        """Returns all currently legal moves as value objects.
+
+        This API is intended for engine and AI code that should not depend on
+        mutable `Chessman` state or UI-specific call paths.
+        """
+        legal_moves: List[Move] = []
+        self.clear_chessmans_moving_list()
+        self.calc_chessmans_moving_list()
+        for piece in self.__chessmans_hash.values():
+            if piece.is_red != self._is_red_turn:
+                continue
+            for target in piece.moving_list:
+                legal_moves.append(
+                    Move(
+                        from_point=copy.deepcopy(piece.position),
+                        to_point=copy.deepcopy(target),
+                        piece_name=piece.name,
+                    )
+                )
+        return legal_moves
+
+    def apply_move(self, move: Move) -> bool:
+        """Applies a move object while preserving existing board behavior."""
+        piece = self.get_chessman(move.from_point.x, move.from_point.y)
+        if piece is None:
+            return False
+        if move.piece_name is not None and piece.name != move.piece_name:
+            return False
+        if piece.is_red != self._is_red_turn:
+            return False
+
+        self.clear_chessmans_moving_list()
+        piece.calc_moving_list()
+        did_move = piece.move(move.to_point.x, move.to_point.y)
+        if did_move:
+            self.clear_chessmans_moving_list()
+        return did_move
+
+    def clone(self) -> "Chessboard":
+        """Creates a deep copy of the board for simulation/search."""
+        return copy.deepcopy(self)
 
     def move_chessman(self, piece: ChessmanType, col_num: int, row_num: int) -> bool:
         """Moves a piece to the target coordinates, handling captures and turn switching."""
