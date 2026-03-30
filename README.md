@@ -50,6 +50,20 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
    pip install -r requirements.txt
    ```
 
+4. **Install PyTorch** (Required for AI training / MCTS + model inference)
+
+   PyTorch is platform-dependent, so it is installed separately from `requirements.txt`.
+
+   **Windows + NVIDIA GPU example (`cu124`):**
+   ```bash
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+   ```
+
+   **Verify GPU availability:**
+   ```bash
+   python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+   ```
+
 ## Usage
 
 **Run the GUI Game (Default):**
@@ -57,10 +71,131 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
 python run.py
 ```
 
+**Run the GUI Human vs AI mode:**
+```bash
+python run.py ai
+```
+
+**Run the GUI Human vs AI mode (AI plays Red):**
+```bash
+python run.py ai-red
+```
+
+**Run the GUI Human vs AI mode (AI plays Black):**
+```bash
+python run.py ai-black
+```
+
 **Run the Terminal Mode:**
 ```bash
 python run.py cli
 ```
+
+**Run the test suite:**
+```bash
+python -m pytest
+```
+
+**Run iterative AI training:**
+```bash
+python run.py train
+```
+
+## Current AI Status
+The project now includes the first working AlphaZero-style foundation layer:
+
+- Stable `Move -> action_id` mapping (`90 x 90 = 8100` action space)
+- Legal-action mask generation
+- Multi-channel board encoding (`15 x 10 x 9`)
+- Minimal residual CNN model interface (`policy logits + value`)
+- PUCT-style MCTS skeleton
+- Self-play sample generation
+- One-step policy/value training loop
+
+This does **not** mean the engine is already strong. It means the project has moved from:
+
+- "rule engine + GUI"
+
+to:
+
+- "rule engine + GUI + trainable AI pipeline skeleton"
+
+## AI Development And Verification
+
+### AI-related modules
+
+- [action_space.py](/F:/source_code/my_chess/chess_ai/action_space.py)
+- [encoding.py](/F:/source_code/my_chess/chess_ai/encoding.py)
+- [dataset.py](/F:/source_code/my_chess/chess_ai/dataset.py)
+- [model.py](/F:/source_code/my_chess/chess_ai/model.py)
+- [evaluator.py](/F:/source_code/my_chess/chess_ai/evaluator.py)
+- [mcts.py](/F:/source_code/my_chess/chess_ai/mcts.py)
+- [self_play.py](/F:/source_code/my_chess/chess_ai/self_play.py)
+- [train.py](/F:/source_code/my_chess/chess_ai/train.py)
+
+### Recommended installation flow
+
+1. Install base dependencies
+```bash
+pip install -r requirements.txt
+```
+
+2. Install PyTorch for your local environment  
+Note:
+PyTorch is intentionally not pinned in `requirements.txt` because CPU / CUDA / platform variants differ.
+
+Windows + NVIDIA GPU example:
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+3. Verify GPU availability
+```bash
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
+
+### Recommended verification commands
+
+Run tests:
+```bash
+python -m pytest
+```
+
+Run iterative self-play training:
+```bash
+python run.py train
+```
+
+Use a larger run explicitly:
+```bash
+python run.py train --iterations 50 --games-per-iteration 8 --num-simulations 64
+```
+
+If you see output like:
+```text
+[iter 1/10] generated=... buffer=... loss=... policy=... value=... checkpoint=...
+```
+
+then the current training loop is working:
+- iterative self-play sample generation
+- repeated policy/value updates
+- checkpoint save after each iteration
+- resumable training
+
+The default checkpoint path is:
+```text
+artifacts/checkpoints/latest.pt
+```
+
+When that checkpoint exists, GUI AI will load it automatically instead of using random initialization.
+
+### Current limitations
+
+The AI layer is still in the skeleton phase, not a strong engine yet:
+
+- no trained strong model yet
+- self-play scale is still small
+- package structure can still be standardized further
 
 ## Development
 This project follows modern python best practices.

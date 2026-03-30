@@ -1,9 +1,11 @@
 # Core Game Dependencies
 pygame==2.6.1
 
-# AI & Data Science (Future use)
-# numpy
-# torch
+# AI & Data Science
+numpy>=2.0.0
+
+# PyTorch is intentionally not pinned here because CPU / CUDA wheels depend on
+# the local platform. Install it separately based on your environment.
 
 # Development & Testing
 pytest>=7.0.0

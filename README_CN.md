@@ -50,6 +50,20 @@
    pip install -r requirements.txt
    ```
 
+4. **安装 PyTorch**（AI 训练 / MCTS + 模型推理需要）
+
+   由于 PyTorch 依赖 CPU / CUDA / 平台环境，不放在 `requirements.txt` 里统一锁死，建议按本机环境单独安装。
+
+   **Windows + NVIDIA GPU 示例（`cu124`）：**
+   ```bash
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+   ```
+
+   **验证 GPU 是否可用：**
+   ```bash
+   python -c "import torch; print(torch.__version__); print(torch.cuda.is_available())"
+   ```
+
 ## 使用方法
 
 **运行 GUI 游戏 (默认):**
@@ -57,10 +71,131 @@
 python run.py
 ```
 
+**运行 GUI 人机对战模式:**
+```bash
+python run.py ai
+```
+
+**运行 GUI 人机对战模式（AI 执红）:**
+```bash
+python run.py ai-red
+```
+
+**运行 GUI 人机对战模式（AI 执黑）:**
+```bash
+python run.py ai-black
+```
+
 **运行终端模式:**
 ```bash
 python run.py cli
 ```
+
+**运行测试：**
+```bash
+python -m pytest
+```
+
+**运行正式 AI 训练：**
+```bash
+python run.py train
+```
+
+## 当前 AI 状态
+目前项目已经具备第一批可运行的 AlphaZero 风格基础设施：
+
+- 稳定的 `Move -> action_id` 映射（`90 x 90 = 8100` 动作空间）
+- 合法动作 mask 生成
+- 多通道棋盘编码（`15 x 10 x 9`）
+- 最小残差 CNN 模型接口（`policy logits + value`）
+- PUCT 风格 MCTS 骨架
+- self-play 样本生成
+- 一步 policy/value 训练循环
+
+这并不表示当前引擎已经很强，而是表示项目已经从：
+
+- “规则引擎 + GUI”
+
+推进到：
+
+- “规则引擎 + GUI + 可训练 AI 管线骨架”
+
+## AI 开发与验证
+
+### AI 相关模块
+
+- [action_space.py](/F:/source_code/my_chess/chess_ai/action_space.py)
+- [encoding.py](/F:/source_code/my_chess/chess_ai/encoding.py)
+- [dataset.py](/F:/source_code/my_chess/chess_ai/dataset.py)
+- [model.py](/F:/source_code/my_chess/chess_ai/model.py)
+- [evaluator.py](/F:/source_code/my_chess/chess_ai/evaluator.py)
+- [mcts.py](/F:/source_code/my_chess/chess_ai/mcts.py)
+- [self_play.py](/F:/source_code/my_chess/chess_ai/self_play.py)
+- [train.py](/F:/source_code/my_chess/chess_ai/train.py)
+
+### 当前推荐安装方式
+
+1. 安装基础依赖
+```bash
+pip install -r requirements.txt
+```
+
+2. 按本机环境安装 PyTorch  
+说明：
+PyTorch 不写死在 `requirements.txt`，因为 CPU / CUDA / 平台环境相关。
+
+Windows + NVIDIA GPU 示例：
+```bash
+pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu124
+```
+
+3. 验证 GPU
+```bash
+python -c "import torch; print(torch.__version__); print(torch.cuda.is_available()); print(torch.cuda.get_device_name(0))"
+```
+
+### 当前推荐验证命令
+
+运行测试：
+```bash
+python -m pytest
+```
+
+运行正式 self-play 训练：
+```bash
+python run.py train
+```
+
+加大训练规模可以直接这样跑：
+```bash
+python run.py train --iterations 50 --games-per-iteration 8 --num-simulations 64
+```
+
+如果看到类似输出：
+```text
+[iter 1/10] generated=... buffer=... loss=... policy=... value=... checkpoint=...
+```
+
+表示当前训练主链已经打通：
+- self-play 持续生成样本
+- policy/value 持续更新
+- 每轮训练后保存 checkpoint
+- 训练可恢复继续
+
+默认 checkpoint 路径是：
+```text
+artifacts/checkpoints/latest.pt
+```
+
+当这个 checkpoint 存在时，GUI 人机模式会优先加载它，而不是继续使用随机初始化模型。
+
+### 当前限制
+
+当前 AI 部分还是骨架阶段，不是成熟引擎：
+
+- 还没有真正训练出有强度的模型
+- self-play 规模仍然很小
+- 包结构仍可继续标准化
 
 ## 开发
 本项目遵循现代 Python 最佳实践。

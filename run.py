@@ -1,24 +1,9 @@
 import sys
-from pathlib import Path
-
-
-def setup_path():
-    """
-    Add the project's parent directory to sys.path to ensure
-    top-level package 'my_chess' can be imported.
-    """
-    # Get the directory containing this script (project root)
-    root_dir = Path(__file__).resolve().parent
-    # We need to add the PARENT of the root dir, so that 'my_chess'
-    # can be resolved as a package.
-    parent_dir = root_dir.parent
-    if str(parent_dir) not in sys.path:
-        print(f"Adding {parent_dir} to sys.path")
-        sys.path.insert(0, str(parent_dir))
+from bootstrap import setup_project_imports
 
 
 def main():
-    setup_path()
+    setup_project_imports()
 
     # Check arguments to decide which mode to run (GUI or CLI)
     if len(sys.argv) > 1 and sys.argv[1] == "cli":
@@ -30,12 +15,24 @@ def main():
         except ImportError as e:
             print(f"Error importing CLI game: {e}")
             sys.exit(1)
+    elif len(sys.argv) > 1 and sys.argv[1] == "train":
+        try:
+            from my_chess.chess_ai import train
+
+            sys.argv = [sys.argv[0], *sys.argv[2:]]
+            train.main()
+        except ImportError as e:
+            print(f"Error importing training entrypoint: {e}")
+            sys.exit(1)
     else:
         try:
             from my_chess.chess_ui import win_game
 
+            args = {arg.lower() for arg in sys.argv[1:]}
+            enable_ai = bool({"ai", "ai-red", "ai-black"} & args)
+            ai_is_red = "ai-red" in args
             print("Starting GUI Game...")
-            win_game.main()
+            win_game.main(enable_ai=enable_ai, ai_is_red=ai_is_red)
         except ImportError as e:
             print(f"Error importing GUI game: {e}")
             sys.exit(1)

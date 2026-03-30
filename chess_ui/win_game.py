@@ -9,6 +9,7 @@ import sys
 import os
 import pygame
 from pygame.locals import Rect
+from my_chess.chess_ai.player import AIPlayer
 from my_chess.chess_core import chessboard, chessman
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
@@ -214,7 +215,14 @@ def get_sidebar_rect():
 
 
 def draw_sidebar(
-    screen, board, font, small_font, red_time, black_time, game_over_text=""
+    screen,
+    board,
+    font,
+    small_font,
+    red_time,
+    black_time,
+    game_over_text="",
+    ai_status_text="",
 ):
     """
     Draws the sidebar, including the undo button and move history.
@@ -276,6 +284,10 @@ def draw_sidebar(
             move_text = small_font.render(f"{move_idx}. {move}", True, pl_color)
             screen.blit(move_text, (BOARD_WIDTH + 20, start_y + i * 24))
 
+        if ai_status_text:
+            ai_text = small_font.render(ai_status_text, True, (40, 40, 40))
+            screen.blit(ai_text, (BOARD_WIDTH + 20, 610))
+
     except Exception as e:
         print(f"Sidebar drawing error: {e}")
 
@@ -284,7 +296,7 @@ def draw_sidebar(
     draw_button(screen, BTN_RESTART_RECT, "重 开", small_font)
 
 
-def main(winstyle=0):
+def main(winstyle=0, enable_ai=False, ai_is_red=False):
     """
     Main function to run the Pygame UI.
     """
@@ -314,6 +326,14 @@ def main(winstyle=0):
     # Initialize Game State
     cbd = chessboard.Chessboard("000")
     cbd.init_board()
+    ai_player = None
+    ai_status_text = ""
+    if enable_ai:
+        ai_player = AIPlayer(is_red=ai_is_red, num_simulations=32)
+        ai_status_text = (
+            f"AI: {'Red' if ai_player.is_red else 'Black'} "
+            f"({ai_player.device}, {ai_player.model_source})"
+        )
 
     # Sprites
     chessmans = pygame.sprite.Group()
@@ -357,6 +377,27 @@ def main(winstyle=0):
             else:
                 black_time += dt
 
+        if not game_over_text and ai_player is not None and ai_player.should_move(cbd):
+            selected_move, analysis = ai_player.choose_move_with_analysis(cbd)
+            analysis_lines = [f"Eval: {analysis.current_win_rate * 100:.1f}%"]
+            for candidate in analysis.candidates:
+                analysis_lines.append(
+                    (
+                        f"{candidate.move.to_ucci()} "
+                        f"P {candidate.selection_probability * 100:.1f}% "
+                        f"W {candidate.win_rate_after_move * 100:.1f}%"
+                    )
+                )
+            print("AI analysis:")
+            for line in analysis_lines:
+                print(line)
+            cbd.apply_move(selected_move)
+            chessmans.empty()
+            creat_sprite_group(chessmans, cbd.chessmans_hash)
+            current_chessman = None
+            cbd.clear_chessmans_moving_list()
+            cbd.calc_chessmans_moving_list()
+
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 sys.exit()
@@ -376,6 +417,7 @@ def main(winstyle=0):
                         chessmans.empty()
                         creat_sprite_group(chessmans, cbd.chessmans_hash)
                         current_chessman = None
+                        cbd.clear_chessmans_moving_list()
                         cbd.calc_chessmans_moving_list()
                         red_time = 0
                         black_time = 0
@@ -384,7 +426,9 @@ def main(winstyle=0):
                         continue
 
                     # Board Interaction (Only if Game Not Over)
-                    if game_over_text:
+                    if game_over_text or (
+                        ai_player is not None and ai_player.should_move(cbd)
+                    ):
                         continue
 
                     col_num, row_num = translate_hit_area((mouse_x, mouse_y))
@@ -428,7 +472,14 @@ def main(winstyle=0):
 
         # Draw Sidebar
         draw_sidebar(
-            screen, cbd, font, small_font, red_time, black_time, game_over_text
+            screen,
+            cbd,
+            font,
+            small_font,
+            red_time,
+            black_time,
+            game_over_text,
+            ai_status_text,
         )
 
         pygame.display.update()
