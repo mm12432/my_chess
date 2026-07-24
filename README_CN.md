@@ -86,6 +86,11 @@ python run.py ai-red
 python run.py ai-black
 ```
 
+**运行 GUI 人机对战并在局后增量学习（示例：AI 执黑）:**
+```bash
+python run.py ai-black learn
+```
+
 **运行终端模式:**
 ```bash
 python run.py cli
@@ -188,6 +193,11 @@ artifacts/checkpoints/latest.pt
 ```
 
 当这个 checkpoint 存在时，GUI 人机模式会优先加载它，而不是继续使用随机初始化模型。
+
+人机对局增量学习的经验池默认保存在：
+```text
+artifacts/experience/human_replay.pkl
+```
 
 ### 当前限制
 

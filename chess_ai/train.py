@@ -122,20 +122,111 @@ def save_checkpoint(
     return path
 
 
+def load_training_checkpoint(
+    path: str | Path,
+    device: str = "cpu",
+) -> tuple[AlphaZeroNet, dict]:
+    """Loads model plus raw checkpoint payload for optimizer/metadata reuse."""
+    checkpoint = torch.load(Path(path), map_location=device)
+    network_config = NetworkConfig(**checkpoint.get("network_config", {}))
+    model = build_model(network_config).to(device)
+    model.load_state_dict(checkpoint["model_state_dict"])
+    return model, checkpoint
+
+
 def load_checkpoint(
     path: str | Path,
     device: str = "cpu",
     trainer: AlphaZeroTrainer | None = None,
 ) -> AlphaZeroNet:
     """Loads a model checkpoint and optionally restores optimizer state."""
-    checkpoint = torch.load(Path(path), map_location=device)
-    network_config = NetworkConfig(**checkpoint.get("network_config", {}))
-    model = build_model(network_config).to(device)
-    model.load_state_dict(checkpoint["model_state_dict"])
+    model, checkpoint = load_training_checkpoint(path, device=device)
     if trainer is not None and "optimizer_state_dict" in checkpoint:
         trainer.model.load_state_dict(checkpoint["model_state_dict"])
         trainer.optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
     return model
+
+
+def incremental_train_on_samples(
+    samples: Iterable[TrainingSample],
+    checkpoint_path: str | Path = DEFAULT_CHECKPOINT_PATH,
+    training_config: TrainingConfig | None = None,
+    device: str | None = None,
+    steps: int = 8,
+    batch_size: int = 64,
+    verbose: bool = False,
+) -> dict[str, float]:
+    """Loads the latest checkpoint, trains on supplied samples, and saves it back."""
+    samples = list(samples)
+    if not samples:
+        raise ValueError("incremental_train_on_samples requires at least one sample")
+
+    device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    checkpoint_path = Path(checkpoint_path)
+    if verbose:
+        print(
+            f"[online-train] start samples={len(samples)} steps={max(1, steps)} "
+            f"batch={batch_size} device={device}"
+        )
+
+    optimizer_state = None
+    extra = {}
+    if checkpoint_path.exists():
+        if verbose:
+            print(f"[online-train] loading checkpoint={checkpoint_path}")
+        model, checkpoint = load_training_checkpoint(checkpoint_path, device=device)
+        optimizer_state = checkpoint.get("optimizer_state_dict")
+        extra = checkpoint.get("extra", {})
+    else:
+        if verbose:
+            print("[online-train] no checkpoint found, building fresh model")
+        model = build_model()
+
+    trainer = AlphaZeroTrainer(model, config=training_config, device=device)
+    if optimizer_state is not None:
+        if verbose:
+            print("[online-train] restoring optimizer state")
+        trainer.optimizer.load_state_dict(optimizer_state)
+
+    replay_buffer = ReplayBuffer(capacity=max(len(samples), batch_size * 4))
+    replay_buffer.extend(samples)
+    if verbose:
+        print(f"[online-train] replay_buffer={len(replay_buffer)}")
+
+    latest_metrics: dict[str, float] = {}
+    total_steps = max(1, steps)
+    for step_index in range(1, total_steps + 1):
+        batch = replay_buffer.sample_batch(batch_size)
+        latest_metrics = trainer.train_step(batch)
+        if verbose:
+            print(
+                "[online-train] "
+                f"step={step_index}/{total_steps} "
+                f"loss={latest_metrics['loss']:.4f} "
+                f"policy={latest_metrics['policy_loss']:.4f} "
+                f"value={latest_metrics['value_loss']:.4f}"
+            )
+
+    total_games = int(extra.get("human_games", 0)) + 1
+    extra.update(
+        {
+            "human_games": total_games,
+            "last_incremental_steps": max(1, steps),
+            "last_incremental_batch_size": min(batch_size, len(replay_buffer)),
+            "device": device,
+        }
+    )
+    save_checkpoint(
+        trainer.model,
+        checkpoint_path,
+        trainer=trainer,
+        extra=extra,
+    )
+    if verbose:
+        print(
+            f"[online-train] saved checkpoint={checkpoint_path} human_games={total_games}"
+        )
+    return latest_metrics
 
 
 def run_training(
@@ -146,15 +237,23 @@ def run_training(
 ) -> AlphaZeroNet:
     """Runs iterative self-play training and saves checkpoints."""
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+    start_iteration = 1
+    checkpoint_extra: dict = {}
 
     if resume and run_config.checkpoint_path.exists():
-        model = load_checkpoint(run_config.checkpoint_path, device=device)
+        model, checkpoint = load_training_checkpoint(run_config.checkpoint_path, device=device)
+        checkpoint_extra = checkpoint.get("extra", {})
+        start_iteration = int(checkpoint_extra.get("iteration", 0)) + 1
+        print(
+            f"[resume] checkpoint={run_config.checkpoint_path} "
+            f"last_iteration={checkpoint_extra.get('iteration', 0)} "
+            f"buffer={checkpoint_extra.get('buffer_size', 'n/a')}"
+        )
     else:
         model = build_model()
 
     trainer = AlphaZeroTrainer(model, config=training_config, device=device)
     if resume and run_config.checkpoint_path.exists():
-        checkpoint = torch.load(run_config.checkpoint_path, map_location=device)
         optimizer_state = checkpoint.get("optimizer_state_dict")
         if optimizer_state:
             trainer.optimizer.load_state_dict(optimizer_state)
@@ -165,7 +264,8 @@ def run_training(
     )
     replay_buffer = ReplayBuffer(capacity=run_config.replay_buffer_capacity)
 
-    for iteration in range(1, run_config.iterations + 1):
+    end_iteration = start_iteration + run_config.iterations - 1
+    for iteration in range(start_iteration, end_iteration + 1):
         generated = 0
         for _ in range(run_config.games_per_iteration):
             samples = generator.play_game(max_moves=run_config.max_moves_per_game)
@@ -190,7 +290,7 @@ def run_training(
         )
         print(
             (
-                f"[iter {iteration}/{run_config.iterations}] "
+                f"[iter {iteration}/{end_iteration}] "
                 f"generated={generated} "
                 f"buffer={len(replay_buffer)} "
                 f"loss={metrics['loss']:.4f} "

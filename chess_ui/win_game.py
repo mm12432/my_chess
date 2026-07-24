@@ -9,7 +9,14 @@ import sys
 import os
 import pygame
 from pygame.locals import Rect
+from my_chess.chess_ai.online_learning import (
+    MistakeMemoryStore,
+    OnlineLearningSession,
+    PersistentReplayBuffer,
+)
 from my_chess.chess_ai.player import AIPlayer
+from my_chess.chess_ai.train import TrainingConfig, incremental_train_on_samples
+from my_chess.chess_ai.action_space import move_to_action_id
 from my_chess.chess_core import chessboard, chessman
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
@@ -296,7 +303,7 @@ def draw_sidebar(
     draw_button(screen, BTN_RESTART_RECT, "重 开", small_font)
 
 
-def main(winstyle=0, enable_ai=False, ai_is_red=False):
+def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
     """
     Main function to run the Pygame UI.
     """
@@ -328,12 +335,22 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
     cbd.init_board()
     ai_player = None
     ai_status_text = ""
+    learning_status_text = ""
+    learning_session = OnlineLearningSession()
+    replay_store = PersistentReplayBuffer()
+    mistake_store = MistakeMemoryStore()
     if enable_ai:
-        ai_player = AIPlayer(is_red=ai_is_red, num_simulations=32)
+        ai_player = AIPlayer(
+            is_red=ai_is_red,
+            num_simulations=32,
+            mistake_memory=mistake_store.load(),
+        )
         ai_status_text = (
             f"AI: {'Red' if ai_player.is_red else 'Black'} "
             f"({ai_player.device}, {ai_player.model_source})"
         )
+        if enable_learning:
+            learning_status_text = "Learning: on"
 
     # Sprites
     chessmans = pygame.sprite.Group()
@@ -354,6 +371,7 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
         background.blit(bgdtile, (x, 0))
 
     game_over_text = ""
+    post_game_learning_done = False
 
     while True:  # Main Loop
         # Check Winner
@@ -363,8 +381,45 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
                 game_over_text = "红方胜!"
             elif winner == "Black":
                 game_over_text = "黑方胜!"
+
+            if enable_learning and ai_player is not None and not post_game_learning_done:
+                mistake_memory = mistake_store.add_mistakes(
+                    learning_session.finalize_ai_mistakes(winner, ai_is_red)
+                )
+                learned_samples = learning_session.finalize(winner)
+                if learned_samples:
+                    replay_buffer = replay_store.load()
+                    replay_buffer.extend(learned_samples)
+                    replay_store.save(replay_buffer.samples())
+                    metrics = incremental_train_on_samples(
+                        replay_buffer.samples(),
+                        device=ai_player.device,
+                        training_config=TrainingConfig(learning_rate=1e-4, weight_decay=1e-4),
+                        steps=2,
+                        batch_size=32,
+                        verbose=True,
+                    )
+                    print(
+                        "Post-game training:",
+                        {
+                            "samples": len(learned_samples),
+                            **metrics,
+                        },
+                    )
+                    ai_player = AIPlayer(
+                        is_red=ai_is_red,
+                        num_simulations=32,
+                        mistake_memory=mistake_memory,
+                    )
+                    ai_status_text = (
+                        f"AI: {'Red' if ai_player.is_red else 'Black'} "
+                        f"({ai_player.device}, {ai_player.model_source})"
+                    )
+                    learning_status_text = "Learning: updated"
+                post_game_learning_done = True
         else:
             game_over_text = ""
+            post_game_learning_done = False
 
         # Timer Update
         current_tick = pygame.time.get_ticks()
@@ -378,7 +433,13 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
                 black_time += dt
 
         if not game_over_text and ai_player is not None and ai_player.should_move(cbd):
-            selected_move, analysis = ai_player.choose_move_with_analysis(cbd)
+            selected_move, analysis, visit_distribution = ai_player.choose_move_with_analysis(cbd)
+            if enable_learning:
+                learning_session.record_distribution(cbd, visit_distribution)
+                learning_session.record_ai_action(
+                    cbd,
+                    move_to_action_id(selected_move),
+                )
             analysis_lines = [f"Eval: {analysis.current_win_rate * 100:.1f}%"]
             for candidate in analysis.candidates:
                 analysis_lines.append(
@@ -422,6 +483,18 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
                         red_time = 0
                         black_time = 0
                         game_over_text = ""
+                        learning_session.reset()
+                        if enable_learning:
+                            learning_status_text = "Learning: on"
+                            ai_player = AIPlayer(
+                                is_red=ai_is_red,
+                                num_simulations=32,
+                                mistake_memory=mistake_store.load(),
+                            )
+                            ai_status_text = (
+                                f"AI: {'Red' if ai_player.is_red else 'Black'} "
+                                f"({ai_player.device}, {ai_player.model_source})"
+                            )
                         print("Restarted.")
                         continue
 
@@ -479,7 +552,7 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False):
             red_time,
             black_time,
             game_over_text,
-            ai_status_text,
+            f"{ai_status_text} {learning_status_text}".strip(),
         )
 
         pygame.display.update()

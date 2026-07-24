@@ -86,6 +86,11 @@ python run.py ai-red
 python run.py ai-black
 ```
 
+**Run GUI Human vs AI with post-game incremental learning (example: AI plays Black):**
+```bash
+python run.py ai-black learn
+```
+
 **Run the Terminal Mode:**
 ```bash
 python run.py cli
@@ -188,6 +193,11 @@ artifacts/checkpoints/latest.pt
 ```
 
 When that checkpoint exists, GUI AI will load it automatically instead of using random initialization.
+
+The human-vs-AI replay store is persisted at:
+```text
+artifacts/experience/human_replay.pkl
+```
 
 ### Current limitations
 

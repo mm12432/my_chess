@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import random
 from typing import Iterable, List, Sequence, Tuple
 
 from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE
@@ -82,3 +83,11 @@ class ReplayBuffer:
     def samples(self) -> Sequence[TrainingSample]:
         """Returns a read-only view of retained samples."""
         return tuple(self._samples)
+
+    def sample_batch(self, batch_size: int) -> Sequence[TrainingSample]:
+        """Returns a random batch, or all samples if the buffer is smaller."""
+        if batch_size <= 0:
+            raise ValueError("batch_size must be positive")
+        if len(self._samples) <= batch_size:
+            return tuple(self._samples)
+        return tuple(random.sample(self._samples, batch_size))

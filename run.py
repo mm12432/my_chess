@@ -31,8 +31,13 @@ def main():
             args = {arg.lower() for arg in sys.argv[1:]}
             enable_ai = bool({"ai", "ai-red", "ai-black"} & args)
             ai_is_red = "ai-red" in args
+            enable_learning = "learn" in args
             print("Starting GUI Game...")
-            win_game.main(enable_ai=enable_ai, ai_is_red=ai_is_red)
+            win_game.main(
+                enable_ai=enable_ai,
+                ai_is_red=ai_is_red,
+                enable_learning=enable_learning,
+            )
         except ImportError as e:
             print(f"Error importing GUI game: {e}")
             sys.exit(1)
