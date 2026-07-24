@@ -394,9 +394,11 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                     metrics = incremental_train_on_samples(
                         replay_buffer.samples(),
                         device=ai_player.device,
-                        training_config=TrainingConfig(learning_rate=1e-4, weight_decay=1e-4),
-                        steps=2,
-                        batch_size=32,
+                        training_config=TrainingConfig(
+                            learning_rate=5e-4, weight_decay=1e-4
+                        ),
+                        steps=max(8, min(32, len(replay_buffer) // 8)),
+                        batch_size=min(64, max(16, len(replay_buffer))),
                         verbose=True,
                     )
                     print(

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
@@ -11,7 +12,7 @@ import torch
 import torch.nn.functional as functional
 
 from my_chess.chess_ai.dataset import ReplayBuffer, TrainingSample
-from my_chess.chess_ai.evaluator import HybridPolicyValueEvaluator
+from my_chess.chess_ai.evaluator import TorchPolicyValueEvaluator
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig
 from my_chess.chess_ai.model import AlphaZeroNet, NetworkConfig, build_model
 from my_chess.chess_ai.self_play import SelfPlayGenerator
@@ -30,13 +31,18 @@ class TrainingConfig:
 
 @dataclass(frozen=True)
 class TrainingRunConfig:
-    """Top-level training-loop configuration."""
+    """Top-level training-loop configuration.
 
-    iterations: int = 10
-    games_per_iteration: int = 4
-    max_moves_per_game: int = 128
-    num_simulations: int = 32
-    replay_buffer_capacity: int = 4096
+    Defaults bias toward throughput over search depth so the model can actually
+    see enough games to improve under a pure-Python rule engine.
+    """
+
+    iterations: int = 20
+    games_per_iteration: int = 8
+    max_moves_per_game: int = 80
+    num_simulations: int = 12
+    train_steps_per_iteration: int = 24
+    replay_buffer_capacity: int = 8192
     batch_size: int = 64
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH
 
@@ -239,9 +245,12 @@ def run_training(
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     start_iteration = 1
     checkpoint_extra: dict = {}
+    checkpoint: dict = {}
 
     if resume and run_config.checkpoint_path.exists():
-        model, checkpoint = load_training_checkpoint(run_config.checkpoint_path, device=device)
+        model, checkpoint = load_training_checkpoint(
+            run_config.checkpoint_path, device=device
+        )
         checkpoint_extra = checkpoint.get("extra", {})
         start_iteration = int(checkpoint_extra.get("iteration", 0)) + 1
         print(
@@ -258,25 +267,51 @@ def run_training(
         if optimizer_state:
             trainer.optimizer.load_state_dict(optimizer_state)
 
-    evaluator = HybridPolicyValueEvaluator(trainer.model, device=device)
+    # Pure network eval for self-play: Hybrid used to dominate wall time via
+    # per-move board clones and diluted the learned policy signal.
+    evaluator = TorchPolicyValueEvaluator(trainer.model, device=device)
     generator = SelfPlayGenerator(
         MCTS(evaluator, MCTSConfig(num_simulations=run_config.num_simulations))
     )
     replay_buffer = ReplayBuffer(capacity=run_config.replay_buffer_capacity)
 
+    print(
+        "[train-config] "
+        f"sims={run_config.num_simulations} "
+        f"games/iter={run_config.games_per_iteration} "
+        f"max_moves={run_config.max_moves_per_game} "
+        f"train_steps={run_config.train_steps_per_iteration} "
+        f"batch={run_config.batch_size} "
+        f"device={device}"
+    )
+
     end_iteration = start_iteration + run_config.iterations - 1
     for iteration in range(start_iteration, end_iteration + 1):
         generated = 0
-        for _ in range(run_config.games_per_iteration):
+        play_started = time.perf_counter()
+        for game_index in range(run_config.games_per_iteration):
+            game_started = time.perf_counter()
             samples = generator.play_game(max_moves=run_config.max_moves_per_game)
             replay_buffer.extend(samples)
             generated += len(samples)
+            game_seconds = time.perf_counter() - game_started
+            print(
+                f"[iter {iteration}] game {game_index + 1}/"
+                f"{run_config.games_per_iteration} "
+                f"moves={len(samples)} time={game_seconds:.1f}s"
+            )
+        play_seconds = time.perf_counter() - play_started
 
-        batch = replay_buffer.samples()[-run_config.batch_size :]
-        if not batch:
+        if not replay_buffer:
             raise RuntimeError("No samples were generated for training")
 
-        metrics = trainer.train_step(batch)
+        train_started = time.perf_counter()
+        metrics: dict[str, float] = {}
+        for _ in range(max(1, run_config.train_steps_per_iteration)):
+            batch = replay_buffer.sample_batch(run_config.batch_size)
+            metrics = trainer.train_step(batch)
+        train_seconds = time.perf_counter() - train_started
+
         checkpoint_path = save_checkpoint(
             trainer.model,
             run_config.checkpoint_path,
@@ -286,6 +321,8 @@ def run_training(
                 "generated_samples": generated,
                 "buffer_size": len(replay_buffer),
                 "device": device,
+                "num_simulations": run_config.num_simulations,
+                "train_steps_per_iteration": run_config.train_steps_per_iteration,
             },
         )
         print(
@@ -293,6 +330,8 @@ def run_training(
                 f"[iter {iteration}/{end_iteration}] "
                 f"generated={generated} "
                 f"buffer={len(replay_buffer)} "
+                f"play={play_seconds:.1f}s "
+                f"train={train_seconds:.1f}s "
                 f"loss={metrics['loss']:.4f} "
                 f"policy={metrics['policy_loss']:.4f} "
                 f"value={metrics['value_loss']:.4f} "
@@ -306,11 +345,12 @@ def run_training(
 def build_arg_parser() -> argparse.ArgumentParser:
     """Builds CLI arguments for the training entrypoint."""
     parser = argparse.ArgumentParser(description="Train the Xiangqi AlphaZero model")
-    parser.add_argument("--iterations", type=int, default=10)
-    parser.add_argument("--games-per-iteration", type=int, default=4)
-    parser.add_argument("--max-moves-per-game", type=int, default=128)
-    parser.add_argument("--num-simulations", type=int, default=32)
-    parser.add_argument("--replay-buffer-capacity", type=int, default=4096)
+    parser.add_argument("--iterations", type=int, default=20)
+    parser.add_argument("--games-per-iteration", type=int, default=8)
+    parser.add_argument("--max-moves-per-game", type=int, default=80)
+    parser.add_argument("--num-simulations", type=int, default=12)
+    parser.add_argument("--train-steps-per-iteration", type=int, default=24)
+    parser.add_argument("--replay-buffer-capacity", type=int, default=8192)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
@@ -344,6 +384,7 @@ def main() -> None:
         games_per_iteration=args.games_per_iteration,
         max_moves_per_game=args.max_moves_per_game,
         num_simulations=args.num_simulations,
+        train_steps_per_iteration=args.train_steps_per_iteration,
         replay_buffer_capacity=args.replay_buffer_capacity,
         batch_size=args.batch_size,
         checkpoint_path=args.checkpoint,

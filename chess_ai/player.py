@@ -8,7 +8,10 @@ import math
 
 import torch
 
-from my_chess.chess_ai.evaluator import HybridPolicyValueEvaluator
+from my_chess.chess_ai.evaluator import (
+    HybridPolicyValueEvaluator,
+    TorchPolicyValueEvaluator,
+)
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig, uniform_policy_value_fn
 from my_chess.chess_ai.model import TORCH_AVAILABLE, build_model
 from my_chess.chess_ai.online_learning import MistakeMemoryStore
@@ -54,10 +57,18 @@ class AIPlayer:
             if checkpoint_path.exists():
                 model = load_checkpoint(checkpoint_path, device=self.device)
                 self.model_source = "trained"
+                # Pure network so self-play / online learning actually show up in play.
+                self.evaluator = TorchPolicyValueEvaluator(model, device=self.device)
             else:
                 model = build_model()
                 self.model_source = "random_init"
-            self.evaluator = HybridPolicyValueEvaluator(model, device=self.device)
+                # Untrained nets need light tactical bias; heuristic no longer clones.
+                self.evaluator = HybridPolicyValueEvaluator(
+                    model,
+                    device=self.device,
+                    model_prior_weight=0.5,
+                    model_value_weight=0.5,
+                )
             self.mcts = MCTS(self.evaluator, MCTSConfig(num_simulations=num_simulations))
         else:
             self.evaluator = uniform_policy_value_fn
@@ -78,9 +89,9 @@ class AIPlayer:
 
     def choose_move_with_distribution(
         self, board: Chessboard
-    ) -> tuple[Move, dict[int, float]]:
-        """Chooses a move and returns the root visit distribution."""
-        visit_distribution = self.mcts.run(board)
+    ) -> tuple[Move, dict[int, float], float]:
+        """Chooses a move and returns the root visit distribution and root value."""
+        visit_distribution, root_value = self.mcts.run_with_value(board)
         if not visit_distribution:
             raise RuntimeError("AI found no legal move")
         visit_distribution = self._apply_mistake_penalties(board, visit_distribution)
@@ -88,14 +99,19 @@ class AIPlayer:
             visit_distribution.items(), key=lambda item: item[1]
         )[0]
         selected_move = self.mcts.action_id_to_legal_move(board, selected_action_id)
-        return selected_move, visit_distribution
+        return selected_move, visit_distribution, root_value
 
     def choose_move_with_analysis(
         self, board: Chessboard, top_k: int = 3
     ) -> tuple[Move, PositionAnalysis, dict[int, float]]:
-        """Chooses the next move and returns a compact analysis summary."""
-        selected_move, visit_distribution = self.choose_move_with_distribution(board)
-        _, root_value = self.evaluator(board)
+        """Chooses the next move and returns a compact analysis summary.
+
+        Avoids re-evaluating top candidates with extra network forwards; visit
+        share is used as a cheap proxy for candidate quality.
+        """
+        selected_move, visit_distribution, root_value = (
+            self.choose_move_with_distribution(board)
+        )
         current_win_rate = self._value_to_win_rate(root_value)
 
         sorted_candidates = sorted(
@@ -104,16 +120,16 @@ class AIPlayer:
         candidates: list[CandidateAnalysis] = []
         for action_id, probability in sorted_candidates:
             move = self.mcts.action_id_to_legal_move(board, action_id)
-            child_board = board.clone()
-            child_board.apply_move(move)
-            _, child_value = self.evaluator(child_board)
-            # Evaluator returns the value from the next player to move, so negate it
-            # to express the estimate from the current AI player's view.
+            # Map visit mass into a rough "after-move" confidence for the UI.
+            candidate_win_rate = max(
+                0.0,
+                min(1.0, current_win_rate * 0.5 + probability * 0.5),
+            )
             candidates.append(
                 CandidateAnalysis(
                     move=move,
                     selection_probability=probability,
-                    win_rate_after_move=self._value_to_win_rate(-child_value),
+                    win_rate_after_move=candidate_win_rate,
                 )
             )
 

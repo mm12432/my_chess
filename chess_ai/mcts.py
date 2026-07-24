@@ -14,7 +14,11 @@ from my_chess.chess_core.move import Move
 class PolicyValueFn(Protocol):
     """Callable interface used by MCTS for policy/value inference."""
 
-    def __call__(self, board: Chessboard) -> tuple[Dict[int, float], float]:
+    def __call__(
+        self,
+        board: Chessboard,
+        legal_moves: list[Move] | None = None,
+    ) -> tuple[Dict[int, float], float]:
         """Returns legal-action priors and a scalar value for the current board."""
 
 
@@ -66,19 +70,25 @@ class MCTS:
 
     def run(self, board: Chessboard) -> Dict[int, float]:
         """Runs search from the given board and returns root visit distribution."""
+        distribution, _ = self.run_with_value(board)
+        return distribution
+
+    def run_with_value(self, board: Chessboard) -> tuple[Dict[int, float], float]:
+        """Runs search and also returns the root network/heuristic value."""
         root = SearchNode(board=board.clone())
-        self._expand(root)
+        root_value = self._expand(root)
 
         for _ in range(self.config.num_simulations):
             self._simulate(root)
 
         total = root.total_visits()
         if total == 0:
-            return {}
-        return {
+            return {}, root_value
+        distribution = {
             action_id: edge.visits / total
             for action_id, edge in root.edges.items()
         }
+        return distribution, root_value
 
     def _simulate(self, node: SearchNode) -> float:
         """Runs one simulation from a node and backpropagates the result."""
@@ -111,10 +121,10 @@ class MCTS:
 
     def _expand(self, node: SearchNode) -> float:
         """Expands a leaf node using the policy/value function."""
-        priors, value = self.policy_value_fn(node.board)
-        legal_moves = {
-            move_to_action_id(move): move for move in node.board.get_legal_moves()
-        }
+        # Generate legal moves once and reuse them inside the evaluator.
+        legal_list = node.board.get_legal_moves()
+        legal_moves = {move_to_action_id(move): move for move in legal_list}
+        priors, value = self.policy_value_fn(node.board, legal_list)
         node.edges = {
             action_id: EdgeStats(prior=priors.get(action_id, 0.0))
             for action_id in legal_moves
@@ -130,8 +140,7 @@ class MCTS:
             raise RuntimeError("No action available for the given board")
         return max(distribution.items(), key=lambda item: item[1])[0]
 
-    @staticmethod
-    def action_id_to_legal_move(board: Chessboard, action_id: int) -> Move:
+    def action_id_to_legal_move(self, board: Chessboard, action_id: int) -> Move:
         """Resolves an action id back to the concrete legal move object."""
         for move in board.get_legal_moves():
             if move_to_action_id(move) == action_id:
@@ -161,12 +170,16 @@ class MCTS:
         return best_action_id
 
 
-def uniform_policy_value_fn(board: Chessboard) -> tuple[Dict[int, float], float]:
+def uniform_policy_value_fn(
+    board: Chessboard,
+    legal_moves: list[Move] | None = None,
+) -> tuple[Dict[int, float], float]:
     """Fallback evaluator used before a trained model is available.
 
     It assigns equal prior to each legal move and returns neutral value.
     """
-    legal_moves = board.get_legal_moves()
+    if legal_moves is None:
+        legal_moves = board.get_legal_moves()
     if not legal_moves:
         return {}, 0.0
 

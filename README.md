@@ -173,7 +173,7 @@ python run.py train
 
 Use a larger run explicitly:
 ```bash
-python run.py train --iterations 50 --games-per-iteration 8 --num-simulations 64
+python run.py train --iterations 20 --games-per-iteration 8 --num-simulations 12 --train-steps-per-iteration 24
 ```
 
 If you see output like:

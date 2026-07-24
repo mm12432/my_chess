@@ -153,17 +153,21 @@ class Chessboard:
         This API is intended for engine and AI code that should not depend on
         mutable `Chessman` state or UI-specific call paths.
         """
+        from my_chess.chess_core.point import Point
+
         legal_moves: List[Move] = []
         self.clear_chessmans_moving_list()
         self.calc_chessmans_moving_list()
         for piece in self.__chessmans_hash.values():
             if piece.is_red != self._is_red_turn:
                 continue
+            # Copy coordinates only — deepcopy of Point objects is too slow for MCTS.
+            from_point = Point(piece.position.x, piece.position.y)
             for target in piece.moving_list:
                 legal_moves.append(
                     Move(
-                        from_point=copy.deepcopy(piece.position),
-                        to_point=copy.deepcopy(target),
+                        from_point=from_point,
+                        to_point=Point(target.x, target.y),
                         piece_name=piece.name,
                     )
                 )

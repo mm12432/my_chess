@@ -53,27 +53,27 @@ def heuristic_value(board: Chessboard) -> float:
 
 
 def heuristic_move_score(board: Chessboard, move: Move) -> float:
-    """Assigns a simple tactical score to one legal move."""
+    """Assigns a cheap tactical score without cloning the board.
+
+    Capture value is enough for bootstrap priors. Full clone/apply checks used to
+    dominate self-play time and are intentionally avoided here.
+    """
     score = 1.0
     target_piece = board.get_chessman(move.to_point.x, move.to_point.y)
     if target_piece is not None:
         score += piece_value(target_piece) * 3.0
-
-    child_board = board.clone()
-    child_board.apply_move(move)
-    winner = child_board.get_winner()
-    mover_wins = (winner == "Red" and board.is_red_turn) or (
-        winner == "Black" and not board.is_red_turn
-    )
-    if mover_wins:
-        score += 10_000.0
-
+        if isinstance(target_piece, chessman.King):
+            score += 10_000.0
     return score
 
 
-def heuristic_policy_value_fn(board: Chessboard) -> tuple[Dict[int, float], float]:
+def heuristic_policy_value_fn(
+    board: Chessboard,
+    legal_moves: list[Move] | None = None,
+) -> tuple[Dict[int, float], float]:
     """Pure heuristic policy/value estimate used for bootstrapping."""
-    legal_moves = board.get_legal_moves()
+    if legal_moves is None:
+        legal_moves = board.get_legal_moves()
     if not legal_moves:
         return {}, 0.0
 
@@ -95,10 +95,15 @@ class TorchPolicyValueEvaluator:
         self.model.eval()
 
     @torch.no_grad()
-    def __call__(self, board: Chessboard) -> tuple[Dict[int, float], float]:
+    def __call__(
+        self,
+        board: Chessboard,
+        legal_moves: list[Move] | None = None,
+    ) -> tuple[Dict[int, float], float]:
         """Returns legal-action priors and scalar value for the current board."""
         self.model.eval()
-        legal_moves = board.get_legal_moves()
+        if legal_moves is None:
+            legal_moves = board.get_legal_moves()
         if not legal_moves:
             return {}, 0.0
 
@@ -112,33 +117,43 @@ class TorchPolicyValueEvaluator:
 
         action_ids = [move_to_action_id(move) for move in legal_moves]
         legal_logits = logits[action_ids]
-        legal_probs = torch.softmax(legal_logits, dim=0)
+        legal_probs = torch.softmax(legal_logits, dim=0).tolist()
 
         priors = {
-            action_id: float(probability.item())
+            action_id: float(probability)
             for action_id, probability in zip(action_ids, legal_probs)
         }
         return priors, float(value.item())
 
 
 class HybridPolicyValueEvaluator:
-    """Blends model output with heuristic guidance for practical play/training."""
+    """Blends model output with cheap heuristic guidance for play bootstrapping."""
 
     def __init__(
         self,
         model: AlphaZeroNet,
         device: str = "cpu",
-        model_prior_weight: float = 0.35,
-        model_value_weight: float = 0.35,
+        model_prior_weight: float = 0.7,
+        model_value_weight: float = 0.7,
     ) -> None:
         self.model_evaluator = TorchPolicyValueEvaluator(model, device=device)
         self.model_prior_weight = model_prior_weight
         self.model_value_weight = model_value_weight
 
-    def __call__(self, board: Chessboard) -> tuple[Dict[int, float], float]:
+    def __call__(
+        self,
+        board: Chessboard,
+        legal_moves: list[Move] | None = None,
+    ) -> tuple[Dict[int, float], float]:
         """Returns blended priors/value for the current board."""
-        heuristic_priors, heuristic_eval = heuristic_policy_value_fn(board)
-        model_priors, model_eval = self.model_evaluator(board)
+        if legal_moves is None:
+            legal_moves = board.get_legal_moves()
+        heuristic_priors, heuristic_eval = heuristic_policy_value_fn(
+            board, legal_moves=legal_moves
+        )
+        model_priors, model_eval = self.model_evaluator(
+            board, legal_moves=legal_moves
+        )
         if not heuristic_priors:
             return {}, 0.0
 

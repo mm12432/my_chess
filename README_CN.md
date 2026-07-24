@@ -173,7 +173,7 @@ python run.py train
 
 加大训练规模可以直接这样跑：
 ```bash
-python run.py train --iterations 50 --games-per-iteration 8 --num-simulations 64
+python run.py train --iterations 20 --games-per-iteration 8 --num-simulations 12 --train-steps-per-iteration 24
 ```
 
 如果看到类似输出：
