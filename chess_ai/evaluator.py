@@ -47,7 +47,9 @@ def heuristic_value(board: Chessboard) -> float:
             black_material += value
 
     material_delta = (
-        red_material - black_material if board.is_red_turn else black_material - red_material
+        red_material - black_material
+        if board.is_red_turn
+        else black_material - red_material
     )
     return math.tanh(material_delta / 12.0)
 
@@ -94,14 +96,13 @@ class TorchPolicyValueEvaluator:
         self.device = torch.device(device)
         self.model.eval()
 
-    @torch.no_grad()
+    @torch.inference_mode()
     def __call__(
         self,
         board: Chessboard,
         legal_moves: list[Move] | None = None,
     ) -> tuple[Dict[int, float], float]:
         """Returns legal-action priors and scalar value for the current board."""
-        self.model.eval()
         if legal_moves is None:
             legal_moves = board.get_legal_moves()
         if not legal_moves:
@@ -151,9 +152,7 @@ class HybridPolicyValueEvaluator:
         heuristic_priors, heuristic_eval = heuristic_policy_value_fn(
             board, legal_moves=legal_moves
         )
-        model_priors, model_eval = self.model_evaluator(
-            board, legal_moves=legal_moves
-        )
+        model_priors, model_eval = self.model_evaluator(board, legal_moves=legal_moves)
         if not heuristic_priors:
             return {}, 0.0
 
@@ -167,9 +166,7 @@ class HybridPolicyValueEvaluator:
 
         total = sum(blended.values())
         if total > 0:
-            blended = {
-                action_id: prior / total for action_id, prior in blended.items()
-            }
+            blended = {action_id: prior / total for action_id, prior in blended.items()}
 
         value = (
             self.model_value_weight * model_eval

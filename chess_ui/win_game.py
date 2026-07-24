@@ -4,11 +4,15 @@ It manages the game loop, event handling (mouse clicks), rendering of the board 
 and the sidebar UI.
 """
 
+import os
+
 # pylint: disable=no-member
 import sys
-import os
+
 import pygame
 from pygame.locals import Rect
+
+from my_chess.chess_ai.action_space import move_to_action_id
 from my_chess.chess_ai.online_learning import (
     MistakeMemoryStore,
     OnlineLearningSession,
@@ -16,8 +20,8 @@ from my_chess.chess_ai.online_learning import (
 )
 from my_chess.chess_ai.player import AIPlayer
 from my_chess.chess_ai.train import TrainingConfig, incremental_train_on_samples
-from my_chess.chess_ai.action_space import move_to_action_id
 from my_chess.chess_core import chessboard, chessman
+from my_chess.chess_core.move import Move
 
 main_dir = os.path.split(os.path.abspath(__file__))[0]
 BOARD_WIDTH = 720
@@ -382,7 +386,11 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
             elif winner == "Black":
                 game_over_text = "黑方胜!"
 
-            if enable_learning and ai_player is not None and not post_game_learning_done:
+            if (
+                enable_learning
+                and ai_player is not None
+                and not post_game_learning_done
+            ):
                 mistake_memory = mistake_store.add_mistakes(
                     learning_session.finalize_ai_mistakes(winner, ai_is_red)
                 )
@@ -391,20 +399,26 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                     replay_buffer = replay_store.load()
                     replay_buffer.extend(learned_samples)
                     replay_store.save(replay_buffer.samples())
+                    # Stronger / recent-focused update so each human game moves
+                    # the checkpoint more visibly before the next game.
+                    steps = max(24, min(96, len(learned_samples) * 2 + 16))
                     metrics = incremental_train_on_samples(
                         replay_buffer.samples(),
                         device=ai_player.device,
                         training_config=TrainingConfig(
-                            learning_rate=5e-4, weight_decay=1e-4
+                            learning_rate=1e-3, weight_decay=1e-4
                         ),
-                        steps=max(8, min(32, len(replay_buffer) // 8)),
-                        batch_size=min(64, max(16, len(replay_buffer))),
+                        steps=steps,
+                        batch_size=min(64, max(16, len(learned_samples))),
+                        recent_samples=learned_samples,
+                        recent_weight=5,
                         verbose=True,
                     )
                     print(
                         "Post-game training:",
                         {
                             "samples": len(learned_samples),
+                            "steps": steps,
                             **metrics,
                         },
                     )
@@ -435,7 +449,9 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                 black_time += dt
 
         if not game_over_text and ai_player is not None and ai_player.should_move(cbd):
-            selected_move, analysis, visit_distribution = ai_player.choose_move_with_analysis(cbd)
+            selected_move, analysis, visit_distribution = (
+                ai_player.choose_move_with_analysis(cbd)
+            )
             if enable_learning:
                 learning_session.record_distribution(cbd, visit_distribution)
                 learning_session.record_ai_action(
@@ -524,6 +540,15 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                             current_chessman = chessman_sprite
                             chessman_sprite.is_selected = True
                         else:
+                            human_move = Move.from_coords(
+                                current_chessman.chessman.col_num,
+                                current_chessman.chessman.row_num,
+                                col_num,
+                                row_num,
+                                current_chessman.chessman.name,
+                            )
+                            if enable_learning:
+                                learning_session.record_selected_move(cbd, human_move)
                             success = current_chessman.move(col_num, row_num)
                             if success:
                                 current_chessman.kill_sound.play()
@@ -531,12 +556,25 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                                 chessman_sprite.kill()
                                 current_chessman.is_selected = False
                                 current_chessman = None
+                            elif enable_learning:
+                                learning_session.discard_last_record()
                     elif current_chessman is not None and chessman_sprite is None:
+                        human_move = Move.from_coords(
+                            current_chessman.chessman.col_num,
+                            current_chessman.chessman.row_num,
+                            col_num,
+                            row_num,
+                            current_chessman.chessman.name,
+                        )
+                        if enable_learning:
+                            learning_session.record_selected_move(cbd, human_move)
                         success = current_chessman.move(col_num, row_num)
                         if success:
                             current_chessman.is_selected = False
                             current_chessman.move_sound.play()
                             current_chessman = None
+                        elif enable_learning:
+                            learning_session.discard_last_record()
 
         framerate.tick(20)
 

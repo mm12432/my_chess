@@ -6,13 +6,31 @@ and game logic. It handles moving pieces, turn management, history tracking, and
 from __future__ import annotations
 
 import copy
-from typing import TYPE_CHECKING, Dict, List, Optional
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 from my_chess.chess_core import chessman
 from my_chess.chess_core.move import Move
 
 if TYPE_CHECKING:
     from my_chess.chess_core.chessman import Chessman as ChessmanType
+
+
+@dataclass
+class MoveUndo:
+    """Snapshot used to reverse a fast search move."""
+
+    piece: "ChessmanType"
+    from_x: int
+    from_y: int
+    to_x: int
+    to_y: int
+    captured: Optional["ChessmanType"]
+    prev_hash: int
+    history_side: str
+    history_chessman: object
+    history_last_pos: Optional[Tuple[int, int]]
+    history_repeat: int
 
 
 class Chessboard:
@@ -189,6 +207,96 @@ class Chessboard:
         if did_move:
             self.clear_chessmans_moving_list()
         return did_move
+
+    def push_move(self, move: Move) -> MoveUndo:
+        """Applies a known-legal move for search and returns an undo token.
+
+        Skips notation and moving-list validation so MCTS can make/unmake
+        without cloning the full board on every expansion.
+        """
+        piece = self.get_chessman(move.from_point.x, move.from_point.y)
+        if piece is None:
+            raise ValueError("push_move requires a piece on the from-square")
+        if piece.is_red != self._is_red_turn:
+            raise ValueError("push_move called on the wrong side to move")
+
+        from_x, from_y = move.from_point.x, move.from_point.y
+        to_x, to_y = move.to_point.x, move.to_point.y
+        captured = self.get_chessman(to_x, to_y)
+        history_side = self.red_or_black(piece)
+        history = self.__history[history_side]
+        undo = MoveUndo(
+            piece=piece,
+            from_x=from_x,
+            from_y=from_y,
+            to_x=to_x,
+            to_y=to_y,
+            captured=captured,
+            prev_hash=self.current_hash,
+            history_side=history_side,
+            history_chessman=history["chessman"],
+            history_last_pos=history["last_pos"],
+            history_repeat=int(history["repeat"]),
+        )
+
+        self.__chessmans[from_x][from_y] = None
+        self.update_history(piece, to_x, to_y)
+        self.current_hash = self.zobrist.update_hash(
+            self.current_hash,
+            piece,
+            from_x,
+            from_y,
+            to_x,
+            to_y,
+            captured,
+        )
+        self.hash_history[self.current_hash] = (
+            self.hash_history.get(self.current_hash, 0) + 1
+        )
+        if captured is not None:
+            self.__chessmans_hash.pop(captured.name, None)
+            captured.is_alive = False
+        piece.update_position(to_x, to_y)
+        self.__chessmans[to_x][to_y] = piece
+        self.__chessmans_hash[piece.name] = piece
+        self._is_red_turn = not self._is_red_turn
+        return undo
+
+    def pop_move(self, undo: MoveUndo) -> None:
+        """Reverses a previous push_move on this board."""
+        count = self.hash_history.get(self.current_hash, 0)
+        if count <= 1:
+            self.hash_history.pop(self.current_hash, None)
+        else:
+            self.hash_history[self.current_hash] = count - 1
+        self.current_hash = undo.prev_hash
+
+        piece = undo.piece
+        self.__chessmans[undo.to_x][undo.to_y] = None
+        if undo.captured is not None:
+            undo.captured.is_alive = True
+            self.__chessmans[undo.to_x][undo.to_y] = undo.captured
+            self.__chessmans_hash[undo.captured.name] = undo.captured
+
+        piece.update_position(undo.from_x, undo.from_y)
+        self.__chessmans[undo.from_x][undo.from_y] = piece
+        self.__chessmans_hash[piece.name] = piece
+        self._is_red_turn = not self._is_red_turn
+
+        history = self.__history[undo.history_side]
+        history["chessman"] = undo.history_chessman
+        history["last_pos"] = undo.history_last_pos
+        history["repeat"] = undo.history_repeat
+
+    def get_fast_winner(self) -> Optional[str]:
+        """Terminal check without stalemate scan (for MCTS leaves)."""
+        if self.hash_history.get(self.current_hash, 0) >= 3:
+            return "Red" if self._is_red_turn else "Black"
+        if self.get_chessman_by_name("red_king") is None:
+            return "Black"
+        if self.get_chessman_by_name("black_king") is None:
+            return "Red"
+        return None
 
     def clone(self) -> "Chessboard":
         """Creates a deep copy of the board for simulation/search."""

@@ -32,9 +32,7 @@ class TestCoreBoardApi(unittest.TestCase):
         board = Chessboard("test")
         board.init_board()
 
-        did_move = board.apply_move(
-            Move.from_coords(1, 0, 2, 2, "red_knight_left")
-        )
+        did_move = board.apply_move(Move.from_coords(1, 0, 2, 2, "red_knight_left"))
 
         self.assertTrue(did_move)
         self.assertIsNone(board.get_chessman(1, 0))
@@ -57,6 +55,26 @@ class TestCoreBoardApi(unittest.TestCase):
         self.assertIsNone(board.get_chessman(2, 2))
         self.assertTrue(board.is_red_turn)
         self.assertFalse(cloned.is_red_turn)
+
+    def test_push_pop_move_round_trip(self):
+        """Search make/unmake should restore board fields used by MCTS."""
+        board = Chessboard("test")
+        board.init_board()
+        before_hash = board.current_hash
+        before_fen = board.to_fen()
+        move = Move.from_coords(1, 0, 2, 2, "red_knight_left")
+
+        undo = board.push_move(move)
+        self.assertIsNone(board.get_chessman(1, 0))
+        self.assertIsNotNone(board.get_chessman(2, 2))
+        self.assertFalse(board.is_red_turn)
+
+        board.pop_move(undo)
+        self.assertEqual(board.current_hash, before_hash)
+        self.assertEqual(board.to_fen(), before_fen)
+        self.assertTrue(board.is_red_turn)
+        self.assertIsNotNone(board.get_chessman(1, 0))
+        self.assertIsNone(board.get_chessman(2, 2))
 
 
 if __name__ == "__main__":

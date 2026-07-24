@@ -9,7 +9,9 @@
   - AI 执黑: `python run.py ai-black`
 - **GUI 人机对战 + 增量学习**: `python run.py ai-black learn`
 - **启动 CLI 模式**: `python run.py cli`
-- **启动 AI 训练**: `python run.py train` (支持 `--iterations`, `--games-per-iteration`, `--num-simulations` 参数)
+- **启动 AI 训练**: `python run.py train` (支持 `--iterations`, `--games-per-iteration`, `--num-simulations`, `--self-play-workers`, `--temperature` 参数)
+- **加速自对弈**: MCTS 使用 make/unmake；CUDA 默认单线程自对弈，CPU 可加 `--self-play-workers 4`
+- **人机增量学习**: `python run.py ai-black learn`（会记录人类着法，局后对最近对局加权多步更新）
 - **运行单元测试**: `python -m pytest`
 
 ## 验证与代码质量

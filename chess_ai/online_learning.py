@@ -39,6 +39,11 @@ class OnlineLearningSession:
         self._records.clear()
         self._ai_actions.clear()
 
+    def discard_last_record(self) -> None:
+        """Drops the most recent pending record (failed human move)."""
+        if self._records:
+            self._records.pop()
+
     def record_distribution(
         self,
         board: Chessboard,
@@ -124,7 +129,9 @@ class OnlineLearningSession:
 class PersistentReplayBuffer:
     """On-disk replay buffer for human-vs-AI games."""
 
-    def __init__(self, path: str | Path = DEFAULT_HUMAN_REPLAY_PATH, capacity: int = 8192):
+    def __init__(
+        self, path: str | Path = DEFAULT_HUMAN_REPLAY_PATH, capacity: int = 8192
+    ):
         self.path = Path(path)
         self.capacity = capacity
 
@@ -183,7 +190,9 @@ class MistakeMemoryStore:
         with self.path.open("rb") as file:
             payload = pickle.load(file)
         return {
-            str(state_key): {int(action_id): int(count) for action_id, count in actions.items()}
+            str(state_key): {
+                int(action_id): int(count) for action_id, count in actions.items()
+            }
             for state_key, actions in payload.get("mistakes", {}).items()
         }
 
@@ -195,7 +204,9 @@ class MistakeMemoryStore:
         with self.path.open("wb") as file:
             pickle.dump(payload, file)
 
-    def add_mistakes(self, mistakes: Iterable[tuple[str, int]]) -> dict[str, dict[int, int]]:
+    def add_mistakes(
+        self, mistakes: Iterable[tuple[str, int]]
+    ) -> dict[str, dict[int, int]]:
         """Increments mistake counts and persists them."""
         memory = self.load()
         for state_key, action_id in mistakes:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import random
 from dataclasses import dataclass, field
 from typing import Dict, Protocol
 
@@ -40,9 +41,8 @@ class EdgeStats:
 
 @dataclass
 class SearchNode:
-    """A node in the search tree."""
+    """A node in the search tree (board state lives on the shared path board)."""
 
-    board: Chessboard
     edges: Dict[int, EdgeStats] = field(default_factory=dict)
     children: Dict[int, "SearchNode"] = field(default_factory=dict)
     legal_moves: Dict[int, Move] = field(default_factory=dict)
@@ -59,14 +59,19 @@ class MCTSConfig:
 
     num_simulations: int = 64
     c_puct: float = 1.5
+    dirichlet_alpha: float = 0.3
+    dirichlet_epsilon: float = 0.25
 
 
 class MCTS:
-    """Minimal PUCT-based tree search."""
+    """Minimal PUCT-based tree search with make/unmake path simulation."""
 
-    def __init__(self, policy_value_fn: PolicyValueFn, config: MCTSConfig | None = None):
+    def __init__(
+        self, policy_value_fn: PolicyValueFn, config: MCTSConfig | None = None
+    ):
         self.policy_value_fn = policy_value_fn
         self.config = config or MCTSConfig()
+        self._root_legal_moves: Dict[int, Move] = {}
 
     def run(self, board: Chessboard) -> Dict[int, float]:
         """Runs search from the given board and returns root visit distribution."""
@@ -75,56 +80,79 @@ class MCTS:
 
     def run_with_value(self, board: Chessboard) -> tuple[Dict[int, float], float]:
         """Runs search and also returns the root network/heuristic value."""
-        root = SearchNode(board=board.clone())
-        root_value = self._expand(root)
+        # One clone per search; simulations make/unmake on this working board.
+        working = board.clone()
+        root = SearchNode()
+        root_value = self._expand(root, working, add_dirichlet_noise=True)
+        self._root_legal_moves = dict(root.legal_moves)
 
         for _ in range(self.config.num_simulations):
-            self._simulate(root)
+            self._simulate(root, working)
 
         total = root.total_visits()
         if total == 0:
             return {}, root_value
         distribution = {
-            action_id: edge.visits / total
-            for action_id, edge in root.edges.items()
+            action_id: edge.visits / total for action_id, edge in root.edges.items()
         }
         return distribution, root_value
 
-    def _simulate(self, node: SearchNode) -> float:
+    def _simulate(self, node: SearchNode, board: Chessboard) -> float:
         """Runs one simulation from a node and backpropagates the result."""
-        if node.board.is_end():
-            winner = node.board.get_winner()
-            if winner is None:
-                return 0.0
-            current_player_wins = (winner == "Red" and node.board.is_red_turn) or (
-                winner == "Black" and not node.board.is_red_turn
-            )
-            return 1.0 if current_player_wins else -1.0
+        fast_winner = board.get_fast_winner()
+        if fast_winner is not None:
+            return self._winner_to_value(fast_winner, board.is_red_turn)
 
         if not node.is_expanded:
-            return self._expand(node)
+            return self._expand(node, board)
+
+        if not node.edges:
+            # Expanded with no legal moves => stalemate loss for side to move.
+            return -1.0
 
         action_id = self._select_action(node)
+        move = node.legal_moves[action_id]
         child = node.children.get(action_id)
         if child is None:
-            move = node.legal_moves[action_id]
-            child_board = node.board.clone()
-            child_board.apply_move(move)
-            child = SearchNode(board=child_board)
+            child = SearchNode()
             node.children[action_id] = child
 
-        child_value = self._simulate(child)
+        undo = board.push_move(move)
+        try:
+            child_value = self._simulate(child, board)
+        finally:
+            board.pop_move(undo)
+
+        # child_value is from the opponent's side-to-move view after the move.
+        my_value = -child_value
         edge = node.edges[action_id]
         edge.visits += 1
-        edge.total_value += child_value
-        return -child_value
+        edge.total_value += my_value
+        return my_value
 
-    def _expand(self, node: SearchNode) -> float:
+    def _expand(
+        self,
+        node: SearchNode,
+        board: Chessboard,
+        add_dirichlet_noise: bool = False,
+    ) -> float:
         """Expands a leaf node using the policy/value function."""
-        # Generate legal moves once and reuse them inside the evaluator.
-        legal_list = node.board.get_legal_moves()
+        fast_winner = board.get_fast_winner()
+        if fast_winner is not None:
+            node.is_expanded = True
+            return self._winner_to_value(fast_winner, board.is_red_turn)
+
+        legal_list = board.get_legal_moves()
+        if not legal_list:
+            # Stalemate: side to move loses under this engine's rules.
+            node.is_expanded = True
+            return -1.0
+
         legal_moves = {move_to_action_id(move): move for move in legal_list}
-        priors, value = self.policy_value_fn(node.board, legal_list)
+        priors, value = self.policy_value_fn(board, legal_list)
+        if add_dirichlet_noise and len(legal_moves) > 1:
+            priors = self._apply_dirichlet_noise(priors, legal_moves.keys())
+
         node.edges = {
             action_id: EdgeStats(prior=priors.get(action_id, 0.0))
             for action_id in legal_moves
@@ -132,6 +160,24 @@ class MCTS:
         node.legal_moves = legal_moves
         node.is_expanded = True
         return value
+
+    def _apply_dirichlet_noise(
+        self, priors: Dict[int, float], action_ids
+    ) -> Dict[int, float]:
+        """Mixes Dirichlet noise into root priors for exploration."""
+        action_ids = list(action_ids)
+        epsilon = self.config.dirichlet_epsilon
+        if epsilon <= 0.0:
+            return priors
+        noise = random.gammavariate
+        alpha = self.config.dirichlet_alpha
+        raw = [noise(alpha, 1.0) for _ in action_ids]
+        total = sum(raw) or 1.0
+        mixed: Dict[int, float] = {}
+        for action_id, sample in zip(action_ids, raw):
+            prior = priors.get(action_id, 0.0)
+            mixed[action_id] = (1.0 - epsilon) * prior + epsilon * (sample / total)
+        return mixed
 
     def select_action(self, board: Chessboard) -> int:
         """Runs search and returns the most-visited root action id."""
@@ -142,6 +188,9 @@ class MCTS:
 
     def action_id_to_legal_move(self, board: Chessboard, action_id: int) -> Move:
         """Resolves an action id back to the concrete legal move object."""
+        cached = self._root_legal_moves.get(action_id)
+        if cached is not None:
+            return cached
         for move in board.get_legal_moves():
             if move_to_action_id(move) == action_id:
                 return move
@@ -152,14 +201,11 @@ class MCTS:
         total_visits = max(1, node.total_visits())
         best_action_id = -1
         best_score = float("-inf")
+        sqrt_total = math.sqrt(total_visits)
+        c_puct = self.config.c_puct
 
         for action_id, edge in node.edges.items():
-            exploration = (
-                self.config.c_puct
-                * edge.prior
-                * math.sqrt(total_visits)
-                / (1 + edge.visits)
-            )
+            exploration = c_puct * edge.prior * sqrt_total / (1 + edge.visits)
             score = edge.mean_value + exploration
             if score > best_score:
                 best_score = score
@@ -168,6 +214,14 @@ class MCTS:
         if best_action_id < 0:
             raise RuntimeError("Search node has no legal actions to select")
         return best_action_id
+
+    @staticmethod
+    def _winner_to_value(winner: str, player_is_red: bool) -> float:
+        if winner == "Red":
+            return 1.0 if player_is_red else -1.0
+        if winner == "Black":
+            return -1.0 if player_is_red else 1.0
+        return 0.0
 
 
 def uniform_policy_value_fn(

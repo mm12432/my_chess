@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
-import math
 
 import torch
 
@@ -69,7 +69,9 @@ class AIPlayer:
                     model_prior_weight=0.5,
                     model_value_weight=0.5,
                 )
-            self.mcts = MCTS(self.evaluator, MCTSConfig(num_simulations=num_simulations))
+            self.mcts = MCTS(
+                self.evaluator, MCTSConfig(num_simulations=num_simulations)
+            )
         else:
             self.evaluator = uniform_policy_value_fn
             self.mcts = MCTS(
@@ -95,9 +97,9 @@ class AIPlayer:
         if not visit_distribution:
             raise RuntimeError("AI found no legal move")
         visit_distribution = self._apply_mistake_penalties(board, visit_distribution)
-        selected_action_id = max(
-            visit_distribution.items(), key=lambda item: item[1]
-        )[0]
+        selected_action_id = max(visit_distribution.items(), key=lambda item: item[1])[
+            0
+        ]
         selected_move = self.mcts.action_id_to_legal_move(board, selected_action_id)
         return selected_move, visit_distribution, root_value
 

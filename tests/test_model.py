@@ -8,7 +8,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".
 
 from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE
 from my_chess.chess_ai.encoding import NUM_CHANNELS
-from my_chess.chess_ai.model import NetworkConfig, TORCH_AVAILABLE, require_torch
+from my_chess.chess_ai.model import TORCH_AVAILABLE, NetworkConfig, require_torch
 
 
 class TestModelConfig(unittest.TestCase):

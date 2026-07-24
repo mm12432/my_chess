@@ -15,7 +15,7 @@ from my_chess.chess_ai.dataset import ReplayBuffer, TrainingSample
 from my_chess.chess_ai.evaluator import TorchPolicyValueEvaluator
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig
 from my_chess.chess_ai.model import AlphaZeroNet, NetworkConfig, build_model
-from my_chess.chess_ai.self_play import SelfPlayGenerator
+from my_chess.chess_ai.self_play import SelfPlayGenerator, play_games_parallel
 
 DEFAULT_CHECKPOINT_DIR = Path("artifacts") / "checkpoints"
 DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "latest.pt"
@@ -44,6 +44,9 @@ class TrainingRunConfig:
     train_steps_per_iteration: int = 24
     replay_buffer_capacity: int = 8192
     batch_size: int = 64
+    self_play_workers: int = 0
+    temperature: float = 1.0
+    temperature_moves: int = 12
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH
 
 
@@ -161,18 +164,25 @@ def incremental_train_on_samples(
     steps: int = 8,
     batch_size: int = 64,
     verbose: bool = False,
+    recent_samples: Iterable[TrainingSample] | None = None,
+    recent_weight: int = 4,
 ) -> dict[str, float]:
-    """Loads the latest checkpoint, trains on supplied samples, and saves it back."""
+    """Loads the latest checkpoint, trains on supplied samples, and saves it back.
+
+    recent_samples (e.g. the just-finished human game) are upsampled so the model
+    adapts faster to the opponent's style without discarding the full replay pool.
+    """
     samples = list(samples)
     if not samples:
         raise ValueError("incremental_train_on_samples requires at least one sample")
 
     device = device or ("cuda" if torch.cuda.is_available() else "cpu")
     checkpoint_path = Path(checkpoint_path)
+    recent = list(recent_samples or [])
     if verbose:
         print(
-            f"[online-train] start samples={len(samples)} steps={max(1, steps)} "
-            f"batch={batch_size} device={device}"
+            f"[online-train] start samples={len(samples)} recent={len(recent)} "
+            f"steps={max(1, steps)} batch={batch_size} device={device}"
         )
 
     optimizer_state = None
@@ -194,15 +204,29 @@ def incremental_train_on_samples(
             print("[online-train] restoring optimizer state")
         trainer.optimizer.load_state_dict(optimizer_state)
 
-    replay_buffer = ReplayBuffer(capacity=max(len(samples), batch_size * 4))
-    replay_buffer.extend(samples)
+    weighted: list[TrainingSample] = list(samples)
+    if recent:
+        boost = max(1, recent_weight)
+        weighted.extend(recent * boost)
+
+    replay_buffer = ReplayBuffer(capacity=max(len(weighted), batch_size * 4))
+    replay_buffer.extend(weighted)
     if verbose:
-        print(f"[online-train] replay_buffer={len(replay_buffer)}")
+        print(f"[online-train] replay_buffer={len(replay_buffer)} (weighted)")
 
     latest_metrics: dict[str, float] = {}
     total_steps = max(1, steps)
+    # First half focuses on the latest game; second half mixes the full pool.
+    focus_steps = min(total_steps, max(1, total_steps // 2)) if recent else 0
+    recent_buffer = ReplayBuffer(capacity=max(len(recent) * max(1, recent_weight), 1))
+    if recent:
+        recent_buffer.extend(recent * max(1, recent_weight))
+
     for step_index in range(1, total_steps + 1):
-        batch = replay_buffer.sample_batch(batch_size)
+        if step_index <= focus_steps and recent_buffer:
+            batch = recent_buffer.sample_batch(min(batch_size, len(recent_buffer)))
+        else:
+            batch = replay_buffer.sample_batch(batch_size)
         latest_metrics = trainer.train_step(batch)
         if verbose:
             print(
@@ -270,10 +294,11 @@ def run_training(
     # Pure network eval for self-play: Hybrid used to dominate wall time via
     # per-move board clones and diluted the learned policy signal.
     evaluator = TorchPolicyValueEvaluator(trainer.model, device=device)
-    generator = SelfPlayGenerator(
-        MCTS(evaluator, MCTSConfig(num_simulations=run_config.num_simulations))
-    )
     replay_buffer = ReplayBuffer(capacity=run_config.replay_buffer_capacity)
+    workers = run_config.self_play_workers
+    if workers <= 0:
+        # CUDA inference serializes on the device; threads help mainly on CPU.
+        workers = 1 if str(device).startswith("cuda") else 4
 
     print(
         "[train-config] "
@@ -282,23 +307,48 @@ def run_training(
         f"max_moves={run_config.max_moves_per_game} "
         f"train_steps={run_config.train_steps_per_iteration} "
         f"batch={run_config.batch_size} "
+        f"workers={workers} "
         f"device={device}"
     )
 
     end_iteration = start_iteration + run_config.iterations - 1
     for iteration in range(start_iteration, end_iteration + 1):
-        generated = 0
         play_started = time.perf_counter()
-        for game_index in range(run_config.games_per_iteration):
-            game_started = time.perf_counter()
-            samples = generator.play_game(max_moves=run_config.max_moves_per_game)
+        if workers <= 1:
+            generator = SelfPlayGenerator(
+                MCTS(evaluator, MCTSConfig(num_simulations=run_config.num_simulations)),
+                temperature=run_config.temperature,
+                temperature_moves=run_config.temperature_moves,
+            )
+            generated = 0
+            for game_index in range(run_config.games_per_iteration):
+                game_started = time.perf_counter()
+                samples = generator.play_game(max_moves=run_config.max_moves_per_game)
+                replay_buffer.extend(samples)
+                generated += len(samples)
+                game_seconds = time.perf_counter() - game_started
+                print(
+                    f"[iter {iteration}] game {game_index + 1}/"
+                    f"{run_config.games_per_iteration} "
+                    f"moves={len(samples)} time={game_seconds:.1f}s"
+                )
+        else:
+            samples = play_games_parallel(
+                evaluator,
+                num_games=run_config.games_per_iteration,
+                num_simulations=run_config.num_simulations,
+                max_moves=run_config.max_moves_per_game,
+                workers=workers,
+                temperature=run_config.temperature,
+                temperature_moves=run_config.temperature_moves,
+            )
             replay_buffer.extend(samples)
-            generated += len(samples)
-            game_seconds = time.perf_counter() - game_started
+            generated = len(samples)
             print(
-                f"[iter {iteration}] game {game_index + 1}/"
+                f"[iter {iteration}] parallel games="
                 f"{run_config.games_per_iteration} "
-                f"moves={len(samples)} time={game_seconds:.1f}s"
+                f"workers={workers} "
+                f"samples={generated}"
             )
         play_seconds = time.perf_counter() - play_started
 
@@ -352,6 +402,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--train-steps-per-iteration", type=int, default=24)
     parser.add_argument("--replay-buffer-capacity", type=int, default=8192)
     parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument(
+        "--self-play-workers",
+        type=int,
+        default=0,
+        help="Parallel self-play threads. 0=auto (1 on CUDA, up to 4 on CPU).",
+    )
+    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--temperature-moves", type=int, default=12)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument(
@@ -387,6 +445,9 @@ def main() -> None:
         train_steps_per_iteration=args.train_steps_per_iteration,
         replay_buffer_capacity=args.replay_buffer_capacity,
         batch_size=args.batch_size,
+        self_play_workers=args.self_play_workers,
+        temperature=args.temperature,
+        temperature_moves=args.temperature_moves,
         checkpoint_path=args.checkpoint,
     )
     training_config = TrainingConfig(

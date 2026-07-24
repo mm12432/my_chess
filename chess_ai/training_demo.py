@@ -32,9 +32,7 @@ def main() -> None:
     model = build_model()
     trainer = AlphaZeroTrainer(model, device=device)
     evaluator = TorchPolicyValueEvaluator(model, device=device)
-    generator = SelfPlayGenerator(
-        MCTS(evaluator, MCTSConfig(num_simulations=16))
-    )
+    generator = SelfPlayGenerator(MCTS(evaluator, MCTSConfig(num_simulations=16)))
     buffer = ReplayBuffer(capacity=256)
 
     samples = generator.play_game(max_moves=8)

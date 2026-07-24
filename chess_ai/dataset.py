@@ -2,13 +2,12 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
 import random
+from dataclasses import dataclass
 from typing import Iterable, List, Sequence, Tuple
 
 from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE
 from my_chess.chess_ai.encoding import NUM_CHANNELS
-
 
 Tensor3D = List[List[List[int]]]
 

@@ -1,7 +1,8 @@
 """走子合法性和规则引擎单元测试。"""
-import unittest
-import sys
+
 import os
+import sys
+import unittest
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
@@ -56,10 +57,14 @@ class TestKnightMoves(unittest.TestCase):
         moves = [(p.x, p.y) for p in knight.moving_list]
         # 马在 (4,5) 应该可以跳到日字位置
         expected_moves = [
-            (3, 7), (5, 7),  # 上方
-            (3, 3), (5, 3),  # 下方
-            (2, 6), (2, 4),  # 左方
-            (6, 6), (6, 4),  # 右方
+            (3, 7),
+            (5, 7),  # 上方
+            (3, 3),
+            (5, 3),  # 下方
+            (2, 6),
+            (2, 4),  # 左方
+            (6, 6),
+            (6, 4),  # 右方
         ]
         for move in expected_moves:
             self.assertIn(move, moves, f"马应该能走到 {move}")

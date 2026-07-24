@@ -63,7 +63,6 @@ if TORCH_AVAILABLE:
             x = self.relu(x + residual)
             return x
 
-
     class AlphaZeroNet(nn.Module):
         """Small residual CNN producing policy logits and scalar value."""
 
