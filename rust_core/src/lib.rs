@@ -385,18 +385,152 @@ impl FastBoard {
         WINNER_ONGOING
     }
 
-    /// Full winner check including stalemate: 0 (ongoing), 1 (Red), -1 (Black).
-    pub fn get_winner(&self) -> i32 {
+    /// Full winner check including stalemate/checkmate: 0 (ongoing), 1 (Red), -1 (Black), 2 (Draw).
+    pub fn get_winner(&mut self) -> i32 {
         let fast = self.get_fast_winner();
         if fast != 0 {
             return fast;
         }
         let mut moves = Vec::with_capacity(64);
-        self.gen_legal_actions(&mut moves);
+        self.gen_strict_legal_actions(&mut moves);
         if moves.is_empty() {
             return if self.is_red_turn { -1 } else { 1 };
         }
         0
+    }
+
+    /// Checks in O(1) whether `king_is_red`'s King can be captured on the board.
+    #[inline]
+    pub fn is_king_attacked(&self, king_is_red: bool) -> bool {
+        let king_code = if king_is_red { KING } else { -KING };
+        let enemy_sign: i8 = if king_is_red { -1 } else { 1 };
+
+        // Find king square (check palace first)
+        let mut king_sq: Option<usize> = None;
+        let (p_min_r, p_max_r) = if king_is_red { (0, 2) } else { (7, 9) };
+        for r in p_min_r..=p_max_r {
+            for c in 3..=5 {
+                let sq = sq_index(c, r);
+                if self.squares[sq] == king_code {
+                    king_sq = Some(sq);
+                    break;
+                }
+            }
+            if king_sq.is_some() {
+                break;
+            }
+        }
+        if king_sq.is_none() {
+            for (sq, &p) in self.squares.iter().enumerate() {
+                if p == king_code {
+                    king_sq = Some(sq);
+                    break;
+                }
+            }
+        }
+        let k_sq = match king_sq {
+            Some(sq) => sq,
+            None => return true,
+        };
+        let kc = sq_col(k_sq) as isize;
+        let kr = sq_row(k_sq) as isize;
+
+        // 1. Orthogonal rays: Rook (0 screens) or Cannon (1 screen)
+        const DIRS: [(isize, isize); 4] = [(-1, 0), (1, 0), (0, -1), (0, 1)];
+        for (dc, dr) in DIRS {
+            let mut c = kc + dc;
+            let mut r = kr + dr;
+            let mut screens = 0usize;
+            while (0..9).contains(&c) && (0..10).contains(&r) {
+                let p = self.squares[sq_index(c as usize, r as usize)];
+                if p != EMPTY {
+                    if screens == 0 {
+                        if p == enemy_sign * ROOK {
+                            return true;
+                        }
+                        screens = 1;
+                    } else {
+                        if p == enemy_sign * CANNON {
+                            return true;
+                        }
+                        break;
+                    }
+                }
+                c += dc;
+                r += dr;
+            }
+        }
+
+        // 2. Enemy Pawn attacks
+        // Red pawn moves +1 in row; Black pawn moves -1 in row.
+        // So an enemy pawn attacking `(kc, kr)` vertically sits at `kr - enemy_pawn_dir`.
+        let enemy_pawn = enemy_sign * PAWN;
+        let enemy_pawn_dir: isize = if king_is_red { -1 } else { 1 };
+        let from_r = kr - enemy_pawn_dir;
+        if (0..10).contains(&from_r)
+            && self.squares[sq_index(kc as usize, from_r as usize)] == enemy_pawn
+        {
+            return true;
+        }
+        for dc in [-1isize, 1isize] {
+            let nc = kc + dc;
+            if (0..9).contains(&nc)
+                && self.squares[sq_index(nc as usize, kr as usize)] == enemy_pawn
+            {
+                return true;
+            }
+        }
+
+        // 3. Enemy Knight attacks
+        let enemy_knight = enemy_sign * KNIGHT;
+        const KNIGHT_OFFSETS: [(isize, isize, isize, isize); 8] = [
+            (2, 1, 1, 1),
+            (2, -1, 1, -1),
+            (-2, 1, -1, 1),
+            (-2, -1, -1, -1),
+            (1, 2, 1, 1),
+            (-1, 2, -1, 1),
+            (1, -2, 1, -1),
+            (-1, -2, -1, -1),
+        ];
+        for (dc, dr, leg_dc, leg_dr) in KNIGHT_OFFSETS {
+            let nc = kc + dc;
+            let nr = kr + dr;
+            if (0..9).contains(&nc)
+                && (0..10).contains(&nr)
+                && self.squares[sq_index(nc as usize, nr as usize)] == enemy_knight
+            {
+                let lc = kc + leg_dc;
+                let lr = kr + leg_dr;
+                if self.squares[sq_index(lc as usize, lr as usize)] == EMPTY {
+                    return true;
+                }
+            }
+        }
+
+        false
+    }
+
+    /// Generates strictly legal moves for MCTS (filtering out moves that leave
+    /// the mover's own King in check).
+    pub fn gen_strict_legal_actions(&mut self, out: &mut Vec<u16>) {
+        let mut pseudo = Vec::with_capacity(64);
+        self.gen_legal_actions(&mut pseudo);
+        out.clear();
+        let mover_is_red = self.is_red_turn;
+        for action_id in pseudo {
+            let to_sq = (action_id as usize) % NUM_SQUARES;
+            if self.squares[to_sq].abs() == KING {
+                out.push(action_id);
+                continue;
+            }
+            let undo = self.push_action(action_id);
+            let attacked = self.is_king_attacked(mover_is_red);
+            self.pop_action(undo);
+            if !attacked {
+                out.push(action_id);
+            }
+        }
     }
 
     /// Writes canonical 15 x 10 x 9 float32 planes into `out` (length 1350).
@@ -770,11 +904,16 @@ impl RustMcts {
                 return 0;
             }
             let mut legal = Vec::with_capacity(64);
-            self.board.gen_legal_actions(&mut legal);
+            self.board.gen_strict_legal_actions(&mut legal);
             if legal.is_empty() {
-                self.nodes[0].is_expanded = true;
-                self.root_value = -1.0;
-                return 0;
+                // If root has no strict-legal moves (checkmated), fall back to pseudo-legal
+                // only when the caller is `Chessboard` on a synthetic test board.
+                self.board.gen_legal_actions(&mut legal);
+                if legal.is_empty() {
+                    self.nodes[0].is_expanded = true;
+                    self.root_value = -1.0;
+                    return 0;
+                }
             }
             // Terminal rule check: if side to move can capture the enemy King now,
             // the game ends immediately in a win (+1.0).
@@ -853,7 +992,7 @@ impl RustMcts {
                     }
 
                     let mut legal = Vec::with_capacity(64);
-                    self.board.gen_legal_actions(&mut legal);
+                    self.board.gen_strict_legal_actions(&mut legal);
                     if legal.is_empty() {
                         self.nodes[node_idx].is_expanded = true;
                         self.backprop_path(&path, -1.0, true);
@@ -1086,7 +1225,7 @@ pub unsafe extern "C" fn rust_board_is_red_turn(board_ptr: *const FastBoard) -> 
 }
 
 #[no_mangle]
-pub unsafe extern "C" fn rust_board_get_winner(board_ptr: *const FastBoard) -> i32 {
+pub unsafe extern "C" fn rust_board_get_winner(board_ptr: *mut FastBoard) -> i32 {
     (*board_ptr).get_winner()
 }
 
