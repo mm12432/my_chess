@@ -14,7 +14,8 @@ from my_chess.chess_ai.action_space import (
     move_to_action_id,
 )
 from my_chess.chess_ai.dataset import TrainingSample
-from my_chess.chess_ai.encoding import encode_board
+from my_chess.chess_ai.encoding import encode_board, mirror_encoded_state
+from my_chess.chess_ai.online_learning import OnlineLearningSession
 from my_chess.chess_ai.self_play import (
     SelfPlayGenerator,
     dense_policy_target,
@@ -81,6 +82,26 @@ class TestValueMasking(unittest.TestCase):
                 self.assertEqual(rb.get_winner_label(), "Draw")
             finally:
                 rb.close()
+
+    def test_online_learning_boosts_winning_human_moves(self):
+        board = Chessboard("online_test")
+        board.init_board()
+        session = OnlineLearningSession()
+        human_move = board.get_legal_moves()[0]
+        session.record_selected_move(board, human_move)
+        board.apply_move(human_move)
+        ai_move = board.get_legal_moves()[0]
+        session.record_distribution(board, {move_to_action_id(ai_move): 1.0})
+
+        samples = session.finalize("Red")
+        self.assertEqual(len(samples), 4)  # 2 moves * 2 (original + mirrored)
+        self.assertEqual(samples[0].policy_weight, 3.0)
+        self.assertEqual(samples[1].policy_weight, 3.0)
+        self.assertEqual(samples[2].policy_weight, 0.15)
+        self.assertEqual(
+            mirror_encoded_state(mirror_encoded_state(samples[0].state)),
+            samples[0].state,
+        )
 
 
 if __name__ == "__main__":

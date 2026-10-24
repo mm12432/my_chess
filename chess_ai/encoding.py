@@ -107,3 +107,8 @@ def tensor_shape(tensor: List[List[List[int]]]) -> Tuple[int, int, int]:
     rows = len(tensor[0]) if channels else 0
     cols = len(tensor[0][0]) if rows else 0
     return channels, rows, cols
+
+
+def mirror_encoded_state(tensor: List[List[List[int]]]) -> List[List[List[int]]]:
+    """Mirrors a C x H x W encoded board horizontally (col -> BOARD_COLS - 1 - col)."""
+    return [[list(reversed(row)) for row in channel] for channel in tensor]
