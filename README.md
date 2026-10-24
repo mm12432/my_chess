@@ -93,12 +93,19 @@ python run.py ai-black learn
 
 **Run automated online training matches (play against play.xiangqi.com Computer):**
 ```bash
-# Default: 1 game with 800 MCTS simulations (natural rule finish, max 300 plies / 150 rounds):
+# Default: 1 game with 800 MCTS simulations against Level 1 (Meow):
 python run.py online-train
 
-# Custom number of games, simulations, and max moves:
-python run.py online-train --games 3 --simulations 800 --max-moves 300
+# Select bot level (1 to 10, e.g. Level 3 Huma or Level 10 Hu):
+python run.py online-train --level 3 --games 2
+
+# Custom number of games, bot level, simulations, and max moves:
+python run.py online-train --games 3 --level 5 --simulations 800 --max-moves 300
 ```
+> **Opponent Difficulty Levels (1-10)**:
+> 1: Meow (Beginner) | 2: Coach David | 3: Huma | 4: Chia | 5: Paul  
+> 6: Trung | 7: Dr. Png | 8: ZhiXuan | 9: Joep | 10: Hu (Grandmaster bot)
+>
 > **Prerequisites**:
 > Automated online training requires the **ego-lite** (i.e. `ego-browser`) browser environment for DOM control and IPC bridge execution. Ensure that `ego-browser` CLI is installed and available in your environment PATH.
 >

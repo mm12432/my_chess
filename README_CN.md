@@ -93,12 +93,19 @@ python run.py ai-black learn
 
 **运行自动化线上对弈训练（挑战 play.xiangqi.com 网页电脑）:**
 ```bash
-# 默认对局 1 盘，800 次 MCTS 搜索（支持自然下满，默认单局安全上限 300 步/150回合）：
+# 默认对局 1 盘，800 次 MCTS 搜索（默认对手为 1 级 Meow）：
 python run.py online-train
 
-# 自定义连续对局盘数与搜索算力：
-python run.py online-train --games 3 --simulations 800 --max-moves 300
+# 指定对手难度级别（1 到 10 级，例如挑战 3 级 Huma 或 10 级 Hu）：
+python run.py online-train --level 3 --games 2
+
+# 自定义连续对局盘数、难度级别与搜索算力：
+python run.py online-train --games 3 --level 5 --simulations 800 --max-moves 300
 ```
+> **对手级别对照表（1~10 级）**：
+> 1: Meow (初级) | 2: Coach David | 3: Huma | 4: Chia | 5: Paul  
+> 6: Trung | 7: Dr. Png | 8: ZhiXuan | 9: Joep | 10: Hu (最高级大师电脑)
+>
 > **前置环境要求**：
 > 自动化线上对战依赖 **ego-lite**（即 `ego-browser`）智能浏览器环境执行自动化操控与跨进程通信。请确保系统已安装并配置好 `ego-browser` 命令行工具。
 >

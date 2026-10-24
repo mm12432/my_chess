@@ -12,7 +12,7 @@
 - **启动 AI 训练**: `python run.py train` (支持 `--iterations`, `--games-per-iteration`, `--num-simulations`, `--self-play-workers`, `--temperature` 参数)
 - **加速自对弈**: MCTS 使用 make/unmake；CUDA 默认单线程自对弈，CPU 可加 `--self-play-workers 4`
 - **人机增量学习**: `python run.py ai-black learn`（会记录人类着法，局后对最近对局加权多步更新）
-- **自动化线上对弈学习**: `python run.py online-train` (自动连接 play.xiangqi.com 挑战网络电脑，局后将对局沉淀为样本并更新最新权重 latest.pt)
+- **自动化线上对弈学习**: `python run.py online-train` (支持 `--level [1-10]`, `--games`, `--simulations`, `--max-moves`；自动连接 play.xiangqi.com 挑战对应级别网络电脑，局后将对局沉淀为样本并更新最新权重 latest.pt)
 - **运行单元测试**: `python -m pytest`
 
 ## 验证与代码质量

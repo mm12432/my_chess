@@ -76,11 +76,12 @@ class BrowserBridgeClient:
             self.proc = None
         print("[online-agent] Browser bridge stopped.")
 
-    def new_game(self) -> dict:
-        """Opens a new computer match on play.xiangqi.com."""
+    def new_game(self, level: int = 1) -> dict:
+        """Opens a new computer match on play.xiangqi.com with the specified bot level (1-10)."""
+        payload = json.dumps({"level": level}).encode("utf-8")
         req = urllib.request.Request(
             f"{SERVER_URL}/start_game",
-            data=b"{}",
+            data=payload,
             headers={"Content-Type": "application/json"},
         )
         resp = urllib.request.urlopen(req, timeout=30)
@@ -118,6 +119,7 @@ def run_online_training_session(
     num_simulations: int = 800,
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH,
     max_moves: int = 300,
+    level: int = 1,
 ) -> None:
     """Runs automated games against play.xiangqi.com and updates the checkpoint."""
     client = BrowserBridgeClient()
@@ -136,13 +138,15 @@ def run_online_training_session(
 
     try:
         for game_idx in range(1, num_games + 1):
+            game_info = client.new_game(level=level)
+            bot_name = game_info.get("bot", f"Level {level}")
+
             print(f"\n{'='*60}")
             print(
-                f"[online-agent] Starting Game {game_idx}/{num_games} against play.xiangqi.com Computer..."
+                f"[online-agent] Starting Game {game_idx}/{num_games} against play.xiangqi.com ({bot_name})..."
             )
             print(f"{'='*60}")
 
-            client.new_game()
             board = Chessboard(f"online_game_{game_idx}")
             board.init_board()
             learning_session.reset()
@@ -272,6 +276,14 @@ def main():
         help="Maximum half-moves (plies) per game (default: 300, i.e. 150 rounds)",
     )
     parser.add_argument(
+        "--level",
+        type=int,
+        default=1,
+        choices=range(1, 11),
+        metavar="[1-10]",
+        help="Bot difficulty level on play.xiangqi.com (1 to 10, default: 1)",
+    )
+    parser.add_argument(
         "--checkpoint",
         type=str,
         default=str(DEFAULT_CHECKPOINT_PATH),
@@ -284,6 +296,7 @@ def main():
         num_simulations=args.simulations,
         checkpoint_path=Path(args.checkpoint),
         max_moves=args.max_moves,
+        level=args.level,
     )
 
 

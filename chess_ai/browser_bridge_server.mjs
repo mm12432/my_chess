@@ -28,10 +28,22 @@ async function ensurePage() {
   return page;
 }
 
-async function startNewGame() {
+async function startNewGame(level = 1) {
   const p = await ensurePage();
   await p.goto("https://play.xiangqi.com/computer", { waitUntil: "domcontentloaded" });
   await p.waitForTimeout(2000);
+
+  // Select Bot Level (1 to 10)
+  const targetLevel = Math.max(1, Math.min(10, Number(level) || 1));
+  const botInfo = await p.evaluate((lvl) => {
+    const buttons = document.querySelectorAll(".all-bots li button.bot-item");
+    if (buttons[lvl - 1]) {
+      buttons[lvl - 1].click();
+    }
+    const detail = document.querySelector(".bot-detail");
+    return detail ? detail.innerText.trim() : "";
+  }, targetLevel);
+  await p.waitForTimeout(500);
 
   // Select Red
   await p.evaluate(() => {
@@ -52,7 +64,7 @@ async function startNewGame() {
   await p.waitForTimeout(2000);
 
   gameInProgress = true;
-  return { status: "ready" };
+  return { status: "ready", bot: botInfo || `Level ${targetLevel}`, level: targetLevel };
 }
 
 async function makeMove(fromCol, fromRow, toCol, toRow, expectedMoveCount) {
@@ -136,7 +148,7 @@ const server = http.createServer(async (req, res) => {
         res.writeHead(200);
         res.end(JSON.stringify({ status: "pong" }));
       } else if (req.url === "/start_game") {
-        const result = await startNewGame();
+        const result = await startNewGame(data.level || 1);
         res.writeHead(200);
         res.end(JSON.stringify(result));
       } else if (req.url === "/play_move") {
