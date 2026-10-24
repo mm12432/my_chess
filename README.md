@@ -91,6 +91,17 @@ python run.py ai-black
 python run.py ai-black learn
 ```
 
+**Run automated online training matches (play against play.xiangqi.com Computer):**
+```bash
+# Default: 1 game with 400 MCTS simulations:
+python run.py online-train
+
+# Custom number of games and search simulation budget:
+python run.py online-train --games 3 --simulations 400
+```
+> **Resolution & Coordinate Auto-Adaptation Note**:
+> The automated training agent queries `.square[class*="{rank}-{file}"]` directly from the webpage DOM and invokes `getBoundingClientRect()` at runtime to calculate each square's exact geometric center. Whether your screen resolution is 1080p, 2K, 4K, ultrawide, or using 125%/150% DPI scaling, **all clicks are automatically centered with pixel precision without requiring any manual coordinate calibration!**
+
 **Run the Terminal Mode:**
 ```bash
 python run.py cli

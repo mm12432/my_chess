@@ -91,6 +91,17 @@ python run.py ai-black
 python run.py ai-black learn
 ```
 
+**运行自动化线上对弈训练（挑战 play.xiangqi.com 网页电脑）:**
+```bash
+# 默认对局 1 盘，400 次 MCTS 搜索：
+python run.py online-train
+
+# 自定义连续对局盘数与搜索算力：
+python run.py online-train --games 3 --simulations 400
+```
+> **分辨率与坐标自适应说明**：
+> 自动化对弈系统通过浏览器 DOM 动态查询 `.square[class*="{rank}-{file}"]` 棋格，并在运行时实时调用 `getBoundingClientRect()` 计算棋盘格的几何物理中心点。无论你的电脑屏幕是 1080p、2K、4K、带鱼屏，还是系统设置了 125%、150% 等任意 DPI 缩放比例，**全部自动像素级精准居中点击，用户完全不需要手动校准坐标**！
+
 **运行终端模式:**
 ```bash
 python run.py cli
