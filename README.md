@@ -93,12 +93,18 @@ python run.py ai-black learn
 
 **Run automated online training matches (play against play.xiangqi.com Computer):**
 ```bash
-# Default: 1 game with 400 MCTS simulations:
+# Default: 1 game with 800 MCTS simulations (natural rule finish, max 300 plies / 150 rounds):
 python run.py online-train
 
-# Custom number of games and search simulation budget:
-python run.py online-train --games 3 --simulations 400
+# Custom number of games, simulations, and max moves:
+python run.py online-train --games 3 --simulations 800 --max-moves 300
 ```
+> **Prerequisites**:
+> Automated online training requires the **ego-lite** (i.e. `ego-browser`) browser environment for DOM control and IPC bridge execution. Ensure that `ego-browser` CLI is installed and available in your environment PATH.
+>
+> **Game Termination Rules**:
+> The session evaluates matches under formal Chinese Chess rules (checkmate/stalemate, 3-fold repetition, 120-halfmove captureless natural draw, or web modal result). Games are no longer artificially truncated at 60 rounds and will play to completion.
+>
 > **Resolution & Coordinate Auto-Adaptation Note**:
 > The automated training agent queries `.square[class*="{rank}-{file}"]` directly from the webpage DOM and invokes `getBoundingClientRect()` at runtime to calculate each square's exact geometric center. Whether your screen resolution is 1080p, 2K, 4K, ultrawide, or using 125%/150% DPI scaling, **all clicks are automatically centered with pixel precision without requiring any manual coordinate calibration!**
 

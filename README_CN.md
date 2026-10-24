@@ -93,12 +93,18 @@ python run.py ai-black learn
 
 **运行自动化线上对弈训练（挑战 play.xiangqi.com 网页电脑）:**
 ```bash
-# 默认对局 1 盘，400 次 MCTS 搜索：
+# 默认对局 1 盘，800 次 MCTS 搜索（支持自然下满，默认单局安全上限 300 步/150回合）：
 python run.py online-train
 
 # 自定义连续对局盘数与搜索算力：
-python run.py online-train --games 3 --simulations 400
+python run.py online-train --games 3 --simulations 800 --max-moves 300
 ```
+> **前置环境要求**：
+> 自动化线上对战依赖 **ego-lite**（即 `ego-browser`）智能浏览器环境执行自动化操控与跨进程通信。请确保系统已安装并配置好 `ego-browser` 命令行工具。
+>
+> **判和与胜负规则**：
+> 系统采用标准象棋规则进行裁定（困毙/绝杀、三次重复局面造成重复方判负、连续 120 步无吃子自然限着判和，以及网页弹窗裁定）。对局不再受早期的 60 回合人为硬截断限制，双方将战至分出胜负或达成正式规则和棋。
+>
 > **分辨率与坐标自适应说明**：
 > 自动化对弈系统通过浏览器 DOM 动态查询 `.square[class*="{rank}-{file}"]` 棋格，并在运行时实时调用 `getBoundingClientRect()` 计算棋盘格的几何物理中心点。无论你的电脑屏幕是 1080p、2K、4K、带鱼屏，还是系统设置了 125%、150% 等任意 DPI 缩放比例，**全部自动像素级精准居中点击，用户完全不需要手动校准坐标**！
 

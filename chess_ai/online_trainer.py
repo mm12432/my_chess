@@ -115,8 +115,9 @@ class BrowserBridgeClient:
 
 def run_online_training_session(
     num_games: int = 1,
-    num_simulations: int = 400,
+    num_simulations: int = 800,
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH,
+    max_moves: int = 300,
 ) -> None:
     """Runs automated games against play.xiangqi.com and updates the checkpoint."""
     client = BrowserBridgeClient()
@@ -149,7 +150,7 @@ def run_online_training_session(
             move_index = 0
             winner: Optional[str] = None
 
-            while not board.is_end() and move_index < 120:
+            while not board.is_end() and move_index < max_moves:
                 # 1. AI's turn (Red)
                 selected_move, visit_distribution, root_value = (
                     ai.choose_move_with_distribution(board)
@@ -262,7 +263,13 @@ def main():
     parser = argparse.ArgumentParser(description="Automated online Xiangqi AI training")
     parser.add_argument("--games", type=int, default=1, help="Number of games to play")
     parser.add_argument(
-        "--simulations", type=int, default=400, help="MCTS simulations per move"
+        "--simulations", type=int, default=800, help="MCTS simulations per move"
+    )
+    parser.add_argument(
+        "--max-moves",
+        type=int,
+        default=300,
+        help="Maximum half-moves (plies) per game (default: 300, i.e. 150 rounds)",
     )
     parser.add_argument(
         "--checkpoint",
@@ -276,6 +283,7 @@ def main():
         num_games=args.games,
         num_simulations=args.simulations,
         checkpoint_path=Path(args.checkpoint),
+        max_moves=args.max_moves,
     )
 
 
