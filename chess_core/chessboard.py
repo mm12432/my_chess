@@ -1,4 +1,4 @@
-﻿"""
+"""
 This module defines the Chessboard class, which represents the game state, board configuration,
 and game logic. It handles moving pieces, turn management, history tracking, and game end conditions.
 """
@@ -15,6 +15,9 @@ from my_chess.chess_core.move import Move
 if TYPE_CHECKING:
     from my_chess.chess_core.chessman import Chessman as ChessmanType
 
+# 自然限着：连续 120 步（60 回合）无吃子判和
+MAX_HALFMOVES_WITHOUT_CAPTURE = 120
+
 
 @dataclass
 class MoveUndo:
@@ -27,6 +30,7 @@ class MoveUndo:
     to_y: int
     captured: Optional["ChessmanType"]
     prev_hash: int
+    prev_halfmove_clock: int
     history_side: str
     history_chessman: object
     history_last_pos: Optional[Tuple[int, int]]
@@ -59,6 +63,7 @@ class Chessboard:
         self.zobrist = Zobrist()
         self.current_hash = 0
         self.hash_history: Dict[int, int] = {}
+        self.halfmove_clock: int = 0
 
     @property
     def is_red_turn(self) -> bool:
@@ -137,6 +142,7 @@ class Chessboard:
         # Initialize Hash
         self.current_hash = self.zobrist.hash_board(self)
         self.hash_history = {self.current_hash: 1}
+        self.halfmove_clock = 0
 
     def add_chessman(self, piece: ChessmanType, col_num: int, row_num: int) -> None:
         """Adds a piece to the board at the specified coordinates."""
@@ -233,6 +239,7 @@ class Chessboard:
             to_y=to_y,
             captured=captured,
             prev_hash=self.current_hash,
+            prev_halfmove_clock=self.halfmove_clock,
             history_side=history_side,
             history_chessman=history["chessman"],
             history_last_pos=history["last_pos"],
@@ -256,6 +263,9 @@ class Chessboard:
         if captured is not None:
             self.__chessmans_hash.pop(captured.name, None)
             captured.is_alive = False
+            self.halfmove_clock = 0
+        else:
+            self.halfmove_clock += 1
         piece.update_position(to_x, to_y)
         self.__chessmans[to_x][to_y] = piece
         self.__chessmans_hash[piece.name] = piece
@@ -270,6 +280,7 @@ class Chessboard:
         else:
             self.hash_history[self.current_hash] = count - 1
         self.current_hash = undo.prev_hash
+        self.halfmove_clock = undo.prev_halfmove_clock
 
         piece = undo.piece
         self.__chessmans[undo.to_x][undo.to_y] = None
@@ -296,6 +307,8 @@ class Chessboard:
             return "Black"
         if self.get_chessman_by_name("black_king") is None:
             return "Red"
+        if self.halfmove_clock >= MAX_HALFMOVES_WITHOUT_CAPTURE:
+            return "Draw"
         return None
 
     def clone(self) -> "Chessboard":
@@ -329,6 +342,10 @@ class Chessboard:
             )
 
             self.moves_history.append(move_str)
+            if captured is not None:
+                self.halfmove_clock = 0
+            else:
+                self.halfmove_clock += 1
 
             self.remove_chessman_target(col_num, row_num)
             self.add_chessman(piece, col_num, row_num)
@@ -360,6 +377,9 @@ class Chessboard:
             return "Black"
         if not black_king:
             return "Red"
+
+        if self.halfmove_clock >= MAX_HALFMOVES_WITHOUT_CAPTURE:
+            return "Draw"
 
         # 困毙检测：当前走棋方所有棋子都没有合法走法
         if self._is_stalemated():
@@ -560,6 +580,7 @@ class Chessboard:
         self.moves_history = []
         self.current_hash = 0
         self.hash_history = {}
+        self.halfmove_clock = 0
 
     @classmethod
     def from_fen(cls, fen: str) -> "Chessboard":

@@ -77,6 +77,7 @@ def _load_library() -> ctypes.CDLL | None:
         c_i8_p,
         ctypes.c_bool,
         ctypes.c_size_t,
+        ctypes.c_uint16,
     ]
     lib.rust_board_from_state.restype = ctypes.c_void_p
 
@@ -210,10 +211,12 @@ class RustBoardHandle:
             raise RuntimeError("Rust core library is not loaded")
         squares = board_to_squares_array(board)
         repeats = int(board.hash_history.get(board.current_hash, 1))
+        halfmove_clock = int(getattr(board, "halfmove_clock", 0))
         ptr = RUST_LIB.rust_board_from_state(
             squares.ctypes.data_as(ctypes.POINTER(ctypes.c_int8)),
             bool(board.is_red_turn),
             repeats,
+            halfmove_clock,
         )
         return cls(ptr)
 
@@ -237,7 +240,7 @@ class RustBoardHandle:
         RUST_LIB.rust_board_push_action(self._ptr, int(action_id))
 
     def get_winner_code(self) -> int:
-        """Returns 0 (ongoing), 1 (Red wins), or -1 (Black wins)."""
+        """Returns 0 (ongoing), 1 (Red wins), -1 (Black wins), or 2 (Draw)."""
         return int(RUST_LIB.rust_board_get_winner(self._ptr))
 
     def get_winner_label(self) -> str | None:
@@ -246,6 +249,8 @@ class RustBoardHandle:
             return "Red"
         if code == -1:
             return "Black"
+        if code == 2:
+            return "Draw"
         return None
 
     def encode_canonical_numpy(self) -> np.ndarray:

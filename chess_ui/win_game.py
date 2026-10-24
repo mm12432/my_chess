@@ -385,6 +385,8 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                 game_over_text = "红方胜!"
             elif winner == "Black":
                 game_over_text = "黑方胜!"
+            elif winner == "Draw":
+                game_over_text = "和棋!"
 
             if (
                 enable_learning

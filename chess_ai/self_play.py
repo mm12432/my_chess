@@ -1,12 +1,13 @@
 """Self-play sample generation built on top of MCTS.
 
-Pure AlphaZero labelling: value targets come only from the real game result.
-Games that hit the move cap have no known result, so their value targets are
-masked out (value_weight=0) instead of being falsely labelled as draws.
+Pure AlphaZero labelling: games play until a rule-defined outcome
+("Red", "Black", or "Draw" under the 120-ply natural move limit) without
+artificial mid-game truncation.
 """
 
 from __future__ import annotations
 
+import itertools
 import math
 import random
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -15,7 +16,11 @@ from typing import Dict, List
 
 import numpy as np
 
-from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE, canonical_action_id
+from my_chess.chess_ai.action_space import (
+    ACTION_SPACE_SIZE,
+    HORIZONTAL_FLIP_INDICES,
+    canonical_action_id,
+)
 from my_chess.chess_ai.dataset import TrainingSample
 from my_chess.chess_ai.encoding import encode_board
 from my_chess.chess_ai.mcts import (
@@ -58,11 +63,11 @@ class SelfPlayGenerator:
         self.mcts = mcts or MCTS(uniform_policy_value_fn, MCTSConfig())
         self.temperature = temperature
         self.temperature_moves = temperature_moves
-        # "Red" / "Black" / "truncated" for the last finished game.
+        # "Red" / "Black" / "Draw" / "truncated" for the last finished game.
         self.last_result: str = RESULT_TRUNCATED
 
-    def play_game(self, max_moves: int = 512) -> List[TrainingSample]:
-        """Plays one self-play game and returns finished training samples."""
+    def play_game(self, max_moves: int | None = None) -> List[TrainingSample]:
+        """Plays one self-play game until rule termination (or optional max_moves)."""
         if RUST_AVAILABLE and hasattr(
             self.mcts.policy_value_fn, "forward_states_numpy"
         ):
@@ -77,6 +82,7 @@ class SelfPlayGenerator:
                 dirichlet_alpha=self.mcts.config.dirichlet_alpha,
                 dirichlet_epsilon=self.mcts.config.dirichlet_epsilon,
                 virtual_loss_batch=self.mcts.config.virtual_loss_batch,
+                augment_horizontal=False,
             )
             self.last_result = results[0] if results else RESULT_TRUNCATED
             return samples
@@ -85,7 +91,12 @@ class SelfPlayGenerator:
         board.init_board()
         records: List[SelfPlayRecord] = []
 
-        for move_index in range(max_moves):
+        step_iter = (
+            range(max_moves)
+            if (max_moves is not None and max_moves > 0)
+            else itertools.count()
+        )
+        for move_index in step_iter:
             if board.is_end():
                 break
 
@@ -124,19 +135,37 @@ class SelfPlayGenerator:
 
     @staticmethod
     def _finalize_records(
-        records: List[SelfPlayRecord], winner: str | None
+        records: List[SelfPlayRecord],
+        winner: str | None,
+        augment_horizontal: bool = False,
     ) -> List[TrainingSample]:
-        """Backfills terminal values; masks value loss for truncated games."""
+        """Backfills terminal values; real outcomes ('Red'/'Black'/'Draw') get weight 1."""
         value_weight = 0.0 if winner is None else 1.0
-        return [
-            TrainingSample(
-                state=record.state,
-                policy_target=record.policy_target,
-                value_target=winner_to_value(winner, record.player_is_red),
-                value_weight=value_weight,
+        samples: List[TrainingSample] = []
+        for record in records:
+            v_target = winner_to_value(winner, record.player_is_red)
+            samples.append(
+                TrainingSample(
+                    state=record.state,
+                    policy_target=record.policy_target,
+                    value_target=v_target,
+                    value_weight=value_weight,
+                )
             )
-            for record in records
-        ]
+            if augment_horizontal and isinstance(record.state, np.ndarray):
+                flipped_state = np.ascontiguousarray(record.state[:, :, ::-1])
+                flipped_policy = np.asarray(record.policy_target, dtype=np.float32)[
+                    HORIZONTAL_FLIP_INDICES
+                ]
+                samples.append(
+                    TrainingSample(
+                        state=flipped_state,
+                        policy_target=flipped_policy,
+                        value_target=v_target,
+                        value_weight=value_weight,
+                    )
+                )
+        return samples
 
 
 def dense_policy_target(
@@ -150,8 +179,8 @@ def dense_policy_target(
 
 
 def winner_to_value(winner: str | None, player_is_red: bool) -> float:
-    """Maps winner label to value target from the acting player's view."""
-    if winner is None:
+    """Maps winner label ('Red', 'Black', 'Draw', or None) to value target."""
+    if winner is None or winner == "Draw":
         return 0.0
     if winner == "Red":
         return 1.0 if player_is_red else -1.0
@@ -164,15 +193,16 @@ def play_games_batched_rust(
     policy_value_fn: PolicyValueFn,
     num_games: int,
     num_simulations: int,
-    max_moves: int,
+    max_moves: int | None = None,
     temperature: float = 1.0,
     temperature_moves: int = 30,
     c_puct: float = 1.5,
     dirichlet_alpha: float = 0.3,
     dirichlet_epsilon: float = 0.25,
     virtual_loss_batch: int = 8,
+    augment_horizontal: bool = True,
 ) -> tuple[List[TrainingSample], List[str]]:
-    """Plays `num_games` concurrently in Rust, batching MCTS leaves on GPU."""
+    """Plays `num_games` concurrently in Rust until rule termination, batching on GPU."""
     if num_games <= 0:
         return [], []
 
@@ -187,8 +217,14 @@ def play_games_batched_rust(
     game_results: List[str | None] = [None] * num_games
     active_indices = list(range(num_games))
 
+    step_iter = (
+        range(max_moves)
+        if (max_moves is not None and max_moves > 0)
+        else itertools.count()
+    )
+
     try:
-        for move_index in range(max_moves):
+        for move_index in step_iter:
             if not active_indices:
                 break
 
@@ -290,9 +326,13 @@ def play_games_batched_rust(
     for g_idx in range(num_games):
         res = game_results[g_idx] or RESULT_TRUNCATED
         final_results.append(res)
-        winner = res if res in ("Red", "Black") else None
+        winner = res if res in ("Red", "Black", "Draw") else None
         all_samples.extend(
-            SelfPlayGenerator._finalize_records(game_records[g_idx], winner)
+            SelfPlayGenerator._finalize_records(
+                game_records[g_idx],
+                winner,
+                augment_horizontal=augment_horizontal,
+            )
         )
     return all_samples, final_results
 
@@ -301,7 +341,7 @@ def play_games_parallel(
     policy_value_fn: PolicyValueFn,
     num_games: int,
     num_simulations: int,
-    max_moves: int,
+    max_moves: int | None = None,
     workers: int = 1,
     temperature: float = 1.0,
     temperature_moves: int = 30,
@@ -318,6 +358,7 @@ def play_games_parallel(
             max_moves=max_moves,
             temperature=temperature,
             temperature_moves=temperature_moves,
+            augment_horizontal=True,
         )
 
     workers = max(1, min(workers, num_games))

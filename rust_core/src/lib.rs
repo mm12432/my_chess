@@ -23,6 +23,13 @@ pub const MANDARIN: i8 = 5;
 pub const KING: i8 = 6;
 pub const PAWN: i8 = 7;
 
+/// Natural move limit (自然限着): 120 consecutive plies (60 full moves) without capture = Draw.
+pub const MAX_HALFMOVES_WITHOUT_CAPTURE: u16 = 120;
+pub const WINNER_ONGOING: i32 = 0;
+pub const WINNER_RED: i32 = 1;
+pub const WINNER_BLACK: i32 = -1;
+pub const WINNER_DRAW: i32 = 2;
+
 #[inline(always)]
 pub const fn sq_index(col: usize, row: usize) -> usize {
     row * BOARD_COLS + col
@@ -183,6 +190,7 @@ pub struct UndoMove {
     pub from_sq: u8,
     pub to_sq: u8,
     pub captured: i8,
+    pub prev_halfmove_clock: u16,
     pub prev_hash: u64,
 }
 
@@ -190,6 +198,7 @@ pub struct UndoMove {
 pub struct FastBoard {
     pub squares: [i8; NUM_SQUARES],
     pub is_red_turn: bool,
+    pub halfmove_clock: u16,
     pub current_hash: u64,
     pub hash_history: Vec<u64>,
 }
@@ -236,6 +245,7 @@ impl FastBoard {
         let mut board = Self {
             squares,
             is_red_turn: true,
+            halfmove_clock: 0,
             current_hash: 0,
             hash_history: Vec::with_capacity(256),
         };
@@ -247,6 +257,7 @@ impl FastBoard {
         let mut board = Self {
             squares: *squares,
             is_red_turn,
+            halfmove_clock: 0,
             current_hash: 0,
             hash_history: Vec::with_capacity(256),
         };
@@ -277,10 +288,14 @@ impl FastBoard {
         let piece = self.squares[from_sq];
         let captured = self.squares[to_sq];
         let prev_hash = self.current_hash;
+        let prev_halfmove_clock = self.halfmove_clock;
 
         let mut h = prev_hash ^ ZOBRIST.piece_key(piece, from_sq) ^ ZOBRIST.piece_key(piece, to_sq);
         if captured != EMPTY {
             h ^= ZOBRIST.piece_key(captured, to_sq);
+            self.halfmove_clock = 0;
+        } else {
+            self.halfmove_clock = self.halfmove_clock.saturating_add(1);
         }
         h ^= ZOBRIST.turn_key;
 
@@ -294,6 +309,7 @@ impl FastBoard {
             from_sq: from_sq as u8,
             to_sq: to_sq as u8,
             captured,
+            prev_halfmove_clock,
             prev_hash,
         }
     }
@@ -306,6 +322,7 @@ impl FastBoard {
         self.squares[from_sq] = piece;
         self.squares[to_sq] = undo.captured;
         self.is_red_turn = !self.is_red_turn;
+        self.halfmove_clock = undo.prev_halfmove_clock;
         self.current_hash = undo.prev_hash;
         self.hash_history.pop();
     }
@@ -357,12 +374,15 @@ impl FastBoard {
             }
         }
         if !has_red_king {
-            return -1;
+            return WINNER_BLACK;
         }
         if !has_black_king {
-            return 1;
+            return WINNER_RED;
         }
-        0
+        if self.halfmove_clock >= MAX_HALFMOVES_WITHOUT_CAPTURE {
+            return WINNER_DRAW;
+        }
+        WINNER_ONGOING
     }
 
     /// Full winner check including stalemate: 0 (ongoing), 1 (Red), -1 (Black).
@@ -989,9 +1009,11 @@ pub unsafe extern "C" fn rust_board_from_state(
     squares_ptr: *const i8,
     is_red_turn: bool,
     root_repeats: usize,
+    halfmove_clock: u16,
 ) -> *mut FastBoard {
     let squares = &*(squares_ptr as *const [i8; NUM_SQUARES]);
     let mut board = FastBoard::from_squares(squares, is_red_turn);
+    board.halfmove_clock = halfmove_clock;
     let extra = root_repeats.saturating_sub(1);
     for _ in 0..extra {
         board.hash_history.push(board.current_hash);

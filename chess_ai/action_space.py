@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import Iterable, List
 
+import numpy as np
+
 from my_chess.chess_core.move import Move
 from my_chess.chess_core.point import Point
 
@@ -64,6 +66,25 @@ def mirror_action_id(action_id: int) -> int:
 def canonical_action_id(action_id: int, is_red_turn: bool) -> int:
     """Maps an absolute action id to the side-to-move network index (and back)."""
     return action_id if is_red_turn else mirror_action_id(action_id)
+
+
+def _flip_square_horizontal(index: int) -> int:
+    row, col = divmod(index, BOARD_COLS)
+    return row * BOARD_COLS + (BOARD_COLS - 1 - col)
+
+
+_FLIP_SQUARE_H = [_flip_square_horizontal(i) for i in range(NUM_SQUARES)]
+
+
+def flip_action_horizontal(action_id: int) -> int:
+    """Mirrors an action horizontally (col -> 8 - col); an involution."""
+    from_index, to_index = divmod(action_id, NUM_SQUARES)
+    return _FLIP_SQUARE_H[from_index] * NUM_SQUARES + _FLIP_SQUARE_H[to_index]
+
+
+HORIZONTAL_FLIP_INDICES = np.array(
+    [flip_action_horizontal(i) for i in range(ACTION_SPACE_SIZE)], dtype=np.int32
+)
 
 
 def legal_moves_to_mask(legal_moves: Iterable[Move]) -> List[int]:

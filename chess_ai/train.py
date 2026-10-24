@@ -41,17 +41,18 @@ class TrainingConfig:
 class TrainingRunConfig:
     """Top-level training-loop configuration.
 
-    max_moves_per_game is in plies and must be large enough for games to reach
-    a real result; truncated games contribute no value signal.
+    max_moves_per_game=0 means no artificial truncation: games play until a
+    rule-defined result ('Red', 'Black', or 'Draw' under the 120-ply no-capture
+    natural limit).
     """
 
-    iterations: int = 20
-    games_per_iteration: int = 8
-    max_moves_per_game: int = 300
+    iterations: int = 50
+    games_per_iteration: int = 16
+    max_moves_per_game: int = 0
     num_simulations: int = 64
-    train_steps_per_iteration: int = 24
-    replay_buffer_capacity: int = 8192
-    batch_size: int = 64
+    train_steps_per_iteration: int = 64
+    replay_buffer_capacity: int = 32768
+    batch_size: int = 128
     self_play_workers: int = 0
     temperature: float = 1.0
     temperature_moves: int = 30
@@ -380,7 +381,8 @@ def run_training(
         play_seconds = time.perf_counter() - play_started
         red_wins = results.count("Red")
         black_wins = results.count("Black")
-        truncated = len(results) - red_wins - black_wins
+        draws = results.count("Draw")
+        truncated = len(results) - red_wins - black_wins - draws
 
         if not replay_buffer:
             raise RuntimeError("No samples were generated for training")
@@ -405,11 +407,14 @@ def run_training(
                 "train_steps_per_iteration": run_config.train_steps_per_iteration,
             },
         )
+        result_summary = f"results(R/B/D)={red_wins}/{black_wins}/{draws}"
+        if truncated > 0:
+            result_summary += f"(trunc={truncated})"
         print(
             (
                 f"[iter {iteration}/{end_iteration}] "
                 f"generated={generated} "
-                f"results(R/B/trunc)={red_wins}/{black_wins}/{truncated} "
+                f"{result_summary} "
                 f"buffer={len(replay_buffer)} "
                 f"play={play_seconds:.1f}s "
                 f"train={train_seconds:.1f}s "
@@ -426,13 +431,18 @@ def run_training(
 def build_arg_parser() -> argparse.ArgumentParser:
     """Builds CLI arguments for the training entrypoint."""
     parser = argparse.ArgumentParser(description="Train the Xiangqi AlphaZero model")
-    parser.add_argument("--iterations", type=int, default=20)
-    parser.add_argument("--games-per-iteration", type=int, default=8)
-    parser.add_argument("--max-moves-per-game", type=int, default=300)
+    parser.add_argument("--iterations", type=int, default=50)
+    parser.add_argument("--games-per-iteration", type=int, default=16)
+    parser.add_argument(
+        "--max-moves-per-game",
+        type=int,
+        default=0,
+        help="0 = no artificial limit (games end by rule: mate/stalemate/rep/120-ply draw).",
+    )
     parser.add_argument("--num-simulations", type=int, default=64)
-    parser.add_argument("--train-steps-per-iteration", type=int, default=24)
-    parser.add_argument("--replay-buffer-capacity", type=int, default=8192)
-    parser.add_argument("--batch-size", type=int, default=64)
+    parser.add_argument("--train-steps-per-iteration", type=int, default=64)
+    parser.add_argument("--replay-buffer-capacity", type=int, default=32768)
+    parser.add_argument("--batch-size", type=int, default=128)
     parser.add_argument(
         "--self-play-workers",
         type=int,

@@ -124,7 +124,7 @@ class OnlineLearningSession:
 
     @staticmethod
     def _winner_to_value(winner: str | None, player_is_red: bool) -> float:
-        if winner is None:
+        if winner is None or winner == "Draw":
             return 0.0
         if winner == "Red":
             return 1.0 if player_is_red else -1.0
