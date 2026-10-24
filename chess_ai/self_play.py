@@ -228,6 +228,12 @@ def play_games_batched_rust(
             if not active_indices:
                 break
 
+            if move_index > 0 and move_index % 20 == 0:
+                print(
+                    f"  [rust-selfplay] ply {move_index}: {len(active_indices)}/{num_games} games active...",
+                    flush=True,
+                )
+
             still_active: List[int] = []
             for g_idx in active_indices:
                 winner_label = boards[g_idx].get_winner_label()

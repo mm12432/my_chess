@@ -14,6 +14,18 @@ from pathlib import Path
 
 def setup_project_imports() -> None:
     """Ensures the repository parent directory is importable as `my_chess`."""
+    # Ensure real-time unbuffered log output in background tasks
+    if hasattr(sys.stdout, "reconfigure"):
+        try:
+            sys.stdout.reconfigure(line_buffering=True)
+        except Exception:
+            pass
+    if hasattr(sys.stderr, "reconfigure"):
+        try:
+            sys.stderr.reconfigure(line_buffering=True)
+        except Exception:
+            pass
+
     root_dir = Path(__file__).resolve().parent
     parent_dir = root_dir.parent
     if str(parent_dir) not in sys.path:

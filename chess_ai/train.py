@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import os
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,7 +141,7 @@ def save_checkpoint(
     trainer: AlphaZeroTrainer | None = None,
     extra: dict | None = None,
 ) -> Path:
-    """Saves model (and optionally optimizer) state to disk."""
+    """Saves model (and optionally optimizer) state to disk with atomic rename."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
     payload = {
@@ -152,7 +154,21 @@ def save_checkpoint(
         payload["training_config"] = trainer.config.__dict__
     if extra:
         payload["extra"] = extra
-    torch.save(payload, path)
+
+    # Atomic write to avoid file collision / partial write on Windows
+    tmp_path = path.with_suffix(f".tmp_{os.getpid()}_{int(time.time() * 1000)}")
+    torch.save(payload, tmp_path)
+    for attempt in range(5):
+        try:
+            os.replace(tmp_path, path)
+            break
+        except OSError:
+            time.sleep(0.1 * (attempt + 1))
+    else:
+        try:
+            shutil.move(str(tmp_path), str(path))
+        except Exception:
+            torch.save(payload, path)
     return path
 
 
@@ -305,7 +321,8 @@ def run_training(
         if not checkpoint_is_compatible(checkpoint):
             print(
                 f"[resume] checkpoint={run_config.checkpoint_path} uses an old "
-                "encoding; starting from a fresh model."
+                "encoding; starting from a fresh model.",
+                flush=True,
             )
             checkpoint = {}
             model = build_model()
@@ -315,7 +332,8 @@ def run_training(
             print(
                 f"[resume] checkpoint={run_config.checkpoint_path} "
                 f"last_iteration={checkpoint_extra.get('iteration', 0)} "
-                f"buffer={checkpoint_extra.get('buffer_size', 'n/a')}"
+                f"buffer={checkpoint_extra.get('buffer_size', 'n/a')}",
+                flush=True,
             )
     else:
         model = build_model()
@@ -341,7 +359,8 @@ def run_training(
         f"train_steps={run_config.train_steps_per_iteration} "
         f"batch={run_config.batch_size} "
         f"workers={workers} "
-        f"device={device}"
+        f"device={device}",
+        flush=True,
     )
 
     end_iteration = start_iteration + run_config.iterations - 1
@@ -364,7 +383,8 @@ def run_training(
                 f"[iter {iteration}] batched games="
                 f"{run_config.games_per_iteration} "
                 f"engine={'rust' if RUST_AVAILABLE else f'py-workers({workers})'} "
-                f"samples={generated}"
+                f"samples={generated}",
+                flush=True,
             )
         else:
             generator = SelfPlayGenerator(
@@ -384,7 +404,8 @@ def run_training(
                     f"[iter {iteration}] game {game_index + 1}/"
                     f"{run_config.games_per_iteration} "
                     f"moves={len(samples)} result={generator.last_result} "
-                    f"time={game_seconds:.1f}s"
+                    f"time={game_seconds:.1f}s",
+                    flush=True,
                 )
         play_seconds = time.perf_counter() - play_started
         red_wins = results.count("Red")
@@ -430,7 +451,8 @@ def run_training(
                 f"policy={metrics['policy_loss']:.4f} "
                 f"value={metrics['value_loss']:.4f} "
                 f"checkpoint={checkpoint_path}"
-            )
+            ),
+            flush=True,
         )
 
     return trainer.model
