@@ -776,6 +776,29 @@ impl RustMcts {
                 self.root_value = -1.0;
                 return 0;
             }
+            // Terminal rule check: if side to move can capture the enemy King now,
+            // the game ends immediately in a win (+1.0).
+            let king_captures: Vec<u16> = legal
+                .iter()
+                .copied()
+                .filter(|&a| self.board.squares[(a as usize) % NUM_SQUARES].abs() == KING)
+                .collect();
+            if !king_captures.is_empty() {
+                let prior = 1.0 / (king_captures.len() as f32);
+                self.nodes[0].edges = king_captures
+                    .into_iter()
+                    .map(|a| {
+                        let mut e = Edge::new(a, prior);
+                        e.visits = self.num_simulations.max(1);
+                        e.total_value = e.visits as f32;
+                        e
+                    })
+                    .collect();
+                self.nodes[0].is_expanded = true;
+                self.root_value = 1.0;
+                self.simulations_done = self.num_simulations;
+                return 0;
+            }
             self.board
                 .encode_canonical(&mut out_states[0..STATE_TENSOR_SIZE]);
             self.nodes[0].in_flight = true;
@@ -834,6 +857,23 @@ impl RustMcts {
                     if legal.is_empty() {
                         self.nodes[node_idx].is_expanded = true;
                         self.backprop_path(&path, -1.0, true);
+                        self.simulations_done += 1;
+                        break;
+                    }
+                    // Terminal rule check: opponent left their King to be captured.
+                    let king_captures: Vec<u16> = legal
+                        .iter()
+                        .copied()
+                        .filter(|&a| self.board.squares[(a as usize) % NUM_SQUARES].abs() == KING)
+                        .collect();
+                    if !king_captures.is_empty() {
+                        let prior = 1.0 / (king_captures.len() as f32);
+                        self.nodes[node_idx].edges = king_captures
+                            .into_iter()
+                            .map(|a| Edge::new(a, prior))
+                            .collect();
+                        self.nodes[node_idx].is_expanded = true;
+                        self.backprop_path(&path, 1.0, true);
                         self.simulations_done += 1;
                         break;
                     }

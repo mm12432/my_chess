@@ -346,7 +346,7 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
     if enable_ai:
         ai_player = AIPlayer(
             is_red=ai_is_red,
-            num_simulations=32,
+            num_simulations=256,
             mistake_memory=mistake_store.load(),
         )
         ai_status_text = (

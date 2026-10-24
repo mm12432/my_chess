@@ -44,7 +44,7 @@ class AIPlayer:
     def __init__(
         self,
         is_red: bool = False,
-        num_simulations: int = 32,
+        num_simulations: int = 256,
         checkpoint_path: str | Path | None = None,
         mistake_memory: dict[str, dict[int, int]] | None = None,
     ) -> None:
@@ -70,7 +70,8 @@ class AIPlayer:
                 self.model_source = "random_init"
             self.evaluator = TorchPolicyValueEvaluator(model, device=self.device)
             self.mcts = MCTS(
-                self.evaluator, MCTSConfig(num_simulations=num_simulations)
+                self.evaluator,
+                MCTSConfig(num_simulations=num_simulations, dirichlet_epsilon=0.0),
             )
         else:
             self.evaluator = uniform_policy_value_fn
