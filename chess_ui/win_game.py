@@ -451,9 +451,13 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                 black_time += dt
 
         if not game_over_text and ai_player is not None and ai_player.should_move(cbd):
-            selected_move, analysis, visit_distribution = (
-                ai_player.choose_move_with_analysis(cbd)
-            )
+            try:
+                selected_move, analysis, visit_distribution = (
+                    ai_player.choose_move_with_analysis(cbd)
+                )
+            except RuntimeError:
+                # AI has no strict-legal check-evasion moves -> checkmated!
+                continue
             if enable_learning:
                 learning_session.record_distribution(cbd, visit_distribution)
                 learning_session.record_ai_action(

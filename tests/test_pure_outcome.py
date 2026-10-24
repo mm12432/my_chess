@@ -103,6 +103,12 @@ class TestValueMasking(unittest.TestCase):
             samples[0].state,
         )
 
+    def test_checkmate_with_other_movable_pieces_triggers_winner(self):
+        # Black King at (4,9) is mated by Red Rooks on ranks 9 and 8,
+        # while Black still has a movable pawn at (0,6).
+        board = Chessboard.from_fen("R3k4/R8/9/p8/9/9/9/9/9/3K5 b - - 0 1")
+        self.assertEqual(board.get_winner(), "Red")
+
 
 if __name__ == "__main__":
     unittest.main()

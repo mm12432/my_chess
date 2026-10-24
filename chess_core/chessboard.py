@@ -381,6 +381,19 @@ class Chessboard:
         if self.halfmove_clock >= MAX_HALFMOVES_WITHOUT_CAPTURE:
             return "Draw"
 
+        # 绝杀/困毙检测：优先使用 Rust 引擎严格应将合法走子判定，
+        # 若当前走棋方走任何一步都会送将（无严格合法走法），立即判对方获胜
+        from my_chess.chess_core.rust_bridge import RUST_AVAILABLE, RustBoardHandle
+
+        if RUST_AVAILABLE:
+            rb = RustBoardHandle.from_python_board(self)
+            try:
+                rust_winner = rb.get_winner_label()
+                if rust_winner is not None:
+                    return rust_winner
+            finally:
+                rb.close()
+
         # 困毙检测：当前走棋方所有棋子都没有合法走法
         if self._is_stalemated():
             return "Black" if self._is_red_turn else "Red"
@@ -633,7 +646,10 @@ class Chessboard:
                             counts[en_base] = 0
                         counts[en_base] += 1
 
-                        name_en = f"{en_base}_{counts[en_base]}"
+                        if en_base in ("red_king", "black_king"):
+                            name_en = en_base
+                        else:
+                            name_en = f"{en_base}_{counts[en_base]}"
                         name_cn = (
                             f" {cn_base} "  # Padding to match existing style roughly
                         )
