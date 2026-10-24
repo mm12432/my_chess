@@ -782,14 +782,16 @@ impl Edge {
 
 struct Node {
     edges: Vec<Edge>,
+    eval_value: f32,
     is_expanded: bool,
     in_flight: bool,
 }
 
 impl Node {
-    fn new() -> Self {
+    fn new(eval_value: f32) -> Self {
         Self {
             edges: Vec::new(),
+            eval_value,
             is_expanded: false,
             in_flight: false,
         }
@@ -831,7 +833,7 @@ impl RustMcts {
         seed: u64,
     ) -> Self {
         let mut nodes = Vec::with_capacity((num_simulations as usize) + 16);
-        nodes.push(Node::new()); // root = 0
+        nodes.push(Node::new(0.0)); // root = 0
         Self {
             board,
             nodes,
@@ -859,12 +861,35 @@ impl RustMcts {
         let sqrt_total = total_visits.sqrt();
         let c_puct = self.c_puct;
 
+        let (visited_visits, visited_val_sum) = node.edges.iter().fold((0u32, 0.0f32), |(v_acc, s_acc), e| {
+            if e.effective_visits() > 0 {
+                (v_acc + e.effective_visits(), s_acc + e.total_value - (e.virtual_visits as f32))
+            } else {
+                (v_acc, s_acc)
+            }
+        });
+
+        let parent_q = if visited_visits > 0 {
+            visited_val_sum / (visited_visits as f32)
+        } else {
+            node.eval_value
+        };
+        // FPU reduction: penalize unvisited branches by 0.20 relative to parent_q
+        // so MCTS won't waste visits exploring low-prior random moves before deepening good moves.
+        let fpu_q = (parent_q - 0.20).clamp(-1.0, 1.0);
+
         let mut best_idx = 0;
         let mut best_score = f32::NEG_INFINITY;
         for (idx, edge) in node.edges.iter().enumerate() {
+            let eff_v = edge.effective_visits();
+            let q = if eff_v == 0 {
+                fpu_q
+            } else {
+                edge.effective_mean_value()
+            };
             let exploration =
-                c_puct * edge.prior * sqrt_total / (1.0 + edge.effective_visits() as f32);
-            let score = edge.effective_mean_value() + exploration;
+                c_puct * edge.prior * sqrt_total / (1.0 + eff_v as f32);
+            let score = q + exploration;
             if score > best_score {
                 best_score = score;
                 best_idx = idx;
@@ -901,6 +926,7 @@ impl RustMcts {
             if fast_winner != 0 {
                 self.nodes[0].is_expanded = true;
                 self.root_value = Self::winner_to_value(fast_winner, self.board.is_red_turn);
+                self.nodes[0].eval_value = self.root_value;
                 return 0;
             }
             let mut legal = Vec::with_capacity(64);
@@ -912,6 +938,7 @@ impl RustMcts {
                 if legal.is_empty() {
                     self.nodes[0].is_expanded = true;
                     self.root_value = -1.0;
+                    self.nodes[0].eval_value = -1.0;
                     return 0;
                 }
             }
@@ -935,6 +962,7 @@ impl RustMcts {
                     .collect();
                 self.nodes[0].is_expanded = true;
                 self.root_value = 1.0;
+                self.nodes[0].eval_value = 1.0;
                 self.simulations_done = self.num_simulations;
                 return 0;
             }
@@ -995,6 +1023,7 @@ impl RustMcts {
                     self.board.gen_strict_legal_actions(&mut legal);
                     if legal.is_empty() {
                         self.nodes[node_idx].is_expanded = true;
+                        self.nodes[node_idx].eval_value = -1.0;
                         self.backprop_path(&path, -1.0, true);
                         self.simulations_done += 1;
                         break;
@@ -1012,6 +1041,7 @@ impl RustMcts {
                             .map(|a| Edge::new(a, prior))
                             .collect();
                         self.nodes[node_idx].is_expanded = true;
+                        self.nodes[node_idx].eval_value = 1.0;
                         self.backprop_path(&path, 1.0, true);
                         self.simulations_done += 1;
                         break;
@@ -1042,7 +1072,7 @@ impl RustMcts {
                 let mut child_idx = self.nodes[node_idx].edges[edge_idx].child_idx as usize;
                 if child_idx == 0 {
                     child_idx = self.nodes.len();
-                    self.nodes.push(Node::new());
+                    self.nodes.push(Node::new(0.0));
                     self.nodes[node_idx].edges[edge_idx].child_idx = child_idx as u32;
                 }
                 self.nodes[node_idx].edges[edge_idx].virtual_visits += 1;
@@ -1114,6 +1144,7 @@ impl RustMcts {
             }
 
             let node = &mut self.nodes[leaf.node_idx];
+            node.eval_value = value;
             node.edges = leaf
                 .legal_actions
                 .iter()

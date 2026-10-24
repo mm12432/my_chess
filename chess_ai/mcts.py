@@ -246,16 +246,26 @@ class MCTS:
         raise ValueError(f"Action id {action_id} is not legal in the current board")
 
     def _select_action(self, node: SearchNode) -> int:
-        """Selects the next edge according to a PUCT-style score."""
+        """Selects the next edge according to a PUCT-style score with FPU reduction."""
         total_visits = max(1, node.total_visits())
         best_action_id = -1
         best_score = float("-inf")
         sqrt_total = math.sqrt(total_visits)
         c_puct = self.config.c_puct
 
+        visited_edges = [e for e in node.edges.values() if e.visits > 0]
+        if visited_edges:
+            parent_q = sum(e.total_value for e in visited_edges) / sum(
+                e.visits for e in visited_edges
+            )
+        else:
+            parent_q = 0.0
+        fpu_q = max(-1.0, min(1.0, parent_q - 0.20))
+
         for action_id, edge in node.edges.items():
+            q = edge.mean_value if edge.visits > 0 else fpu_q
             exploration = c_puct * edge.prior * sqrt_total / (1 + edge.visits)
-            score = edge.mean_value + exploration
+            score = q + exploration
             if score > best_score:
                 best_score = score
                 best_action_id = action_id

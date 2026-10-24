@@ -44,7 +44,7 @@ class AIPlayer:
     def __init__(
         self,
         is_red: bool = False,
-        num_simulations: int = 256,
+        num_simulations: int = 800,
         checkpoint_path: str | Path | None = None,
         mistake_memory: dict[str, dict[int, int]] | None = None,
     ) -> None:
