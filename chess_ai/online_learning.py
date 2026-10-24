@@ -9,11 +9,16 @@ from typing import Iterable, List
 
 from my_chess.chess_ai.action_space import (
     ACTION_SPACE_SIZE,
+    HORIZONTAL_FLIP_INDICES,
     canonical_action_id,
     move_to_action_id,
 )
 from my_chess.chess_ai.dataset import ReplayBuffer, TrainingSample
-from my_chess.chess_ai.encoding import ENCODING_VERSION, encode_board
+from my_chess.chess_ai.encoding import (
+    ENCODING_VERSION,
+    encode_board,
+    mirror_encoded_state,
+)
 from my_chess.chess_ai.self_play import dense_policy_target as _dense_canonical
 from my_chess.chess_core.chessboard import Chessboard
 from my_chess.chess_core.move import Move
@@ -30,6 +35,7 @@ class PendingExperience:
     state: List[List[List[int]]]
     policy_target: List[float]
     player_is_red: bool
+    is_human_move: bool = False
 
 
 class OnlineLearningSession:
@@ -61,6 +67,7 @@ class OnlineLearningSession:
                 state=encode_board(board),
                 policy_target=dense,
                 player_is_red=board.is_red_turn,
+                is_human_move=False,
             )
         )
 
@@ -72,6 +79,7 @@ class OnlineLearningSession:
                 state=encode_board(board),
                 policy_target=dense,
                 player_is_red=board.is_red_turn,
+                is_human_move=True,
             )
         )
 
@@ -84,18 +92,46 @@ class OnlineLearningSession:
         self._ai_actions.append((board.to_fen(), action_id, board.is_red_turn))
 
     def finalize(self, winner: str | None) -> list[TrainingSample]:
-        """Converts in-progress records into labeled training samples."""
+        """Converts in-progress records into labeled training samples.
+
+        Winning human moves receive a boosted policy weight (3.0x) and are
+        augmented with horizontal symmetry so the AI strongly absorbs the
+        winning human play style, while losing moves get minimal policy weight
+        (0.15x) so the AI does not reinforce blunders.
+        """
         samples: list[TrainingSample] = []
         value_weight = 0.0 if winner is None else 1.0
         for record in self._records:
+            value_target = self._winner_to_value(winner, record.player_is_red)
+            if value_target > 0.0:
+                policy_weight = 3.0 if record.is_human_move else 1.5
+            elif value_target < 0.0:
+                policy_weight = 0.15
+            else:
+                policy_weight = 1.0
+
             samples.append(
                 TrainingSample(
                     state=record.state,
                     policy_target=record.policy_target,
-                    value_target=self._winner_to_value(winner, record.player_is_red),
+                    value_target=value_target,
                     value_weight=value_weight,
+                    policy_weight=policy_weight,
                 )
             )
+            if winner is not None:
+                mirrored_policy = [
+                    record.policy_target[src_idx] for src_idx in HORIZONTAL_FLIP_INDICES
+                ]
+                samples.append(
+                    TrainingSample(
+                        state=mirror_encoded_state(record.state),
+                        policy_target=mirrored_policy,
+                        value_target=value_target,
+                        value_weight=value_weight,
+                        policy_weight=policy_weight,
+                    )
+                )
         self.reset()
         return samples
 
@@ -161,6 +197,7 @@ class PersistentReplayBuffer:
                     policy_target=item["policy_target"],
                     value_target=item["value_target"],
                     value_weight=item.get("value_weight", 1.0),
+                    policy_weight=item.get("policy_weight", 1.0),
                 )
             )
         return buffer
@@ -177,6 +214,7 @@ class PersistentReplayBuffer:
                     "policy_target": sample.policy_target,
                     "value_target": sample.value_target,
                     "value_weight": sample.value_weight,
+                    "policy_weight": sample.policy_weight,
                 }
                 for sample in trimmed
             ],

@@ -22,12 +22,15 @@ class TrainingSample:
         value_target: Final game outcome from the current player's perspective.
         value_weight: 1.0 when the game reached a real result, 0.0 when it was
             truncated (unknown outcome must not be taught as a draw).
+        policy_weight: Relative weight for the policy loss of this sample
+            (e.g. boosted for winning human moves, reduced/zeroed for losing moves).
     """
 
     state: Tensor3D
     policy_target: List[float]
     value_target: float
     value_weight: float = 1.0
+    policy_weight: float = 1.0
 
     def validate(self) -> None:
         """Checks sample shape invariants early."""

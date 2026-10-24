@@ -103,12 +103,20 @@ class AlphaZeroTrainer:
             dtype=torch.float32,
             device=self.device,
         )
+        policy_weights = torch.tensor(
+            [sample.policy_weight for sample in samples],
+            dtype=torch.float32,
+            device=self.device,
+        )
 
         self.model.train()
         policy_logits, values = self.model(states)
 
         policy_log_probs = functional.log_softmax(policy_logits, dim=1)
-        policy_loss = -(policy_targets * policy_log_probs).sum(dim=1).mean()
+        per_sample_policy = -(policy_targets * policy_log_probs).sum(dim=1)
+        policy_loss = (
+            per_sample_policy * policy_weights
+        ).sum() / policy_weights.sum().clamp(min=1.0)
         # Only games with a real result teach the value head.
         squared = (values - value_targets) ** 2 * value_weights
         value_loss = squared.sum() / value_weights.sum().clamp(min=1.0)

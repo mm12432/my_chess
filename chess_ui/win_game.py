@@ -426,7 +426,7 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                     )
                     ai_player = AIPlayer(
                         is_red=ai_is_red,
-                        num_simulations=32,
+                        num_simulations=256,
                         mistake_memory=mistake_memory,
                     )
                     ai_status_text = (
@@ -508,7 +508,7 @@ def main(winstyle=0, enable_ai=False, ai_is_red=False, enable_learning=False):
                             learning_status_text = "Learning: on"
                             ai_player = AIPlayer(
                                 is_red=ai_is_red,
-                                num_simulations=32,
+                                num_simulations=256,
                                 mistake_memory=mistake_store.load(),
                             )
                             ai_status_text = (
