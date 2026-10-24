@@ -13,6 +13,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from typing import Dict, List
 
+import numpy as np
+
 from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE, canonical_action_id
 from my_chess.chess_ai.dataset import TrainingSample
 from my_chess.chess_ai.encoding import encode_board
@@ -23,6 +25,14 @@ from my_chess.chess_ai.mcts import (
     uniform_policy_value_fn,
 )
 from my_chess.chess_core.chessboard import Chessboard
+from my_chess.chess_core.rust_bridge import (
+    BOARD_COLS,
+    BOARD_ROWS,
+    NUM_CHANNELS,
+    RUST_AVAILABLE,
+    RustBoardHandle,
+    RustMctsHandle,
+)
 
 RESULT_TRUNCATED = "truncated"
 
@@ -31,8 +41,8 @@ RESULT_TRUNCATED = "truncated"
 class SelfPlayRecord:
     """Intermediate record kept until the game result is known."""
 
-    state: List[List[List[int]]]
-    policy_target: List[float]
+    state: List[List[List[int]]] | np.ndarray
+    policy_target: List[float] | np.ndarray
     player_is_red: bool
 
 
@@ -53,6 +63,24 @@ class SelfPlayGenerator:
 
     def play_game(self, max_moves: int = 512) -> List[TrainingSample]:
         """Plays one self-play game and returns finished training samples."""
+        if RUST_AVAILABLE and hasattr(
+            self.mcts.policy_value_fn, "forward_states_numpy"
+        ):
+            samples, results = play_games_batched_rust(
+                self.mcts.policy_value_fn,
+                num_games=1,
+                num_simulations=self.mcts.config.num_simulations,
+                max_moves=max_moves,
+                temperature=self.temperature,
+                temperature_moves=self.temperature_moves,
+                c_puct=self.mcts.config.c_puct,
+                dirichlet_alpha=self.mcts.config.dirichlet_alpha,
+                dirichlet_epsilon=self.mcts.config.dirichlet_epsilon,
+                virtual_loss_batch=self.mcts.config.virtual_loss_batch,
+            )
+            self.last_result = results[0] if results else RESULT_TRUNCATED
+            return samples
+
         board = Chessboard("self_play")
         board.init_board()
         records: List[SelfPlayRecord] = []
@@ -132,6 +160,143 @@ def winner_to_value(winner: str | None, player_is_red: bool) -> float:
     raise ValueError(f"Unexpected winner label: {winner}")
 
 
+def play_games_batched_rust(
+    policy_value_fn: PolicyValueFn,
+    num_games: int,
+    num_simulations: int,
+    max_moves: int,
+    temperature: float = 1.0,
+    temperature_moves: int = 30,
+    c_puct: float = 1.5,
+    dirichlet_alpha: float = 0.3,
+    dirichlet_epsilon: float = 0.25,
+    virtual_loss_batch: int = 8,
+) -> tuple[List[TrainingSample], List[str]]:
+    """Plays `num_games` concurrently in Rust, batching MCTS leaves on GPU."""
+    if num_games <= 0:
+        return [], []
+
+    vl_batch = max(1, int(virtual_loss_batch))
+    max_batch_leaves = num_games * vl_batch
+    states_buf = np.empty(
+        (max_batch_leaves, NUM_CHANNELS, BOARD_ROWS, BOARD_COLS), dtype=np.float32
+    )
+
+    boards = [RustBoardHandle.new_initial() for _ in range(num_games)]
+    game_records: List[List[SelfPlayRecord]] = [[] for _ in range(num_games)]
+    game_results: List[str | None] = [None] * num_games
+    active_indices = list(range(num_games))
+
+    try:
+        for move_index in range(max_moves):
+            if not active_indices:
+                break
+
+            still_active: List[int] = []
+            for g_idx in active_indices:
+                winner_label = boards[g_idx].get_winner_label()
+                if winner_label is not None:
+                    game_results[g_idx] = winner_label
+                else:
+                    still_active.append(g_idx)
+            active_indices = still_active
+            if not active_indices:
+                break
+
+            mcts_list = [
+                RustMctsHandle(
+                    boards[g_idx],
+                    num_simulations=num_simulations,
+                    c_puct=c_puct,
+                    dirichlet_alpha=dirichlet_alpha,
+                    dirichlet_epsilon=dirichlet_epsilon,
+                )
+                for g_idx in active_indices
+            ]
+
+            try:
+                while True:
+                    leaf_counts: List[int] = []
+                    total_leaves = 0
+                    for mcts in mcts_list:
+                        if mcts.is_finished:
+                            leaf_counts.append(0)
+                            continue
+                        n_leaves = mcts.select_leaves_into(
+                            vl_batch,
+                            states_buf[total_leaves : total_leaves + vl_batch],
+                        )
+                        leaf_counts.append(n_leaves)
+                        total_leaves += n_leaves
+
+                    if total_leaves == 0:
+                        break
+
+                    logits_np, values_np = policy_value_fn.forward_states_numpy(
+                        states_buf[:total_leaves]
+                    )
+                    offset = 0
+                    for mcts, count in zip(mcts_list, leaf_counts):
+                        if count > 0:
+                            mcts.apply_evaluated_leaves(
+                                count,
+                                logits_np[offset : offset + count],
+                                values_np[offset : offset + count],
+                            )
+                            offset += count
+
+                temp = temperature if move_index < temperature_moves else 0.0
+                next_active: List[int] = []
+                for g_idx, mcts in zip(active_indices, mcts_list):
+                    dist, _ = mcts.get_root_result()
+                    if not dist:
+                        winner_label = boards[g_idx].get_winner_label()
+                        game_results[g_idx] = (
+                            winner_label
+                            if winner_label is not None
+                            else RESULT_TRUNCATED
+                        )
+                        continue
+
+                    board_h = boards[g_idx]
+                    game_records[g_idx].append(
+                        SelfPlayRecord(
+                            state=board_h.encode_canonical_numpy(),
+                            policy_target=mcts.get_canonical_policy_target_numpy(),
+                            player_is_red=board_h.is_red_turn,
+                        )
+                    )
+                    chosen_action = SelfPlayGenerator._sample_action(dist, temp)
+                    board_h.push_action(chosen_action)
+                    next_active.append(g_idx)
+
+                active_indices = next_active
+            finally:
+                for mcts in mcts_list:
+                    mcts.close()
+
+        for g_idx in active_indices:
+            if game_results[g_idx] is None:
+                winner_label = boards[g_idx].get_winner_label()
+                game_results[g_idx] = (
+                    winner_label if winner_label is not None else RESULT_TRUNCATED
+                )
+    finally:
+        for b in boards:
+            b.close()
+
+    all_samples: List[TrainingSample] = []
+    final_results: List[str] = []
+    for g_idx in range(num_games):
+        res = game_results[g_idx] or RESULT_TRUNCATED
+        final_results.append(res)
+        winner = res if res in ("Red", "Black") else None
+        all_samples.extend(
+            SelfPlayGenerator._finalize_records(game_records[g_idx], winner)
+        )
+    return all_samples, final_results
+
+
 def play_games_parallel(
     policy_value_fn: PolicyValueFn,
     num_games: int,
@@ -144,6 +309,16 @@ def play_games_parallel(
     """Plays multiple self-play games; returns samples and per-game results."""
     if num_games <= 0:
         return [], []
+
+    if RUST_AVAILABLE and hasattr(policy_value_fn, "forward_states_numpy"):
+        return play_games_batched_rust(
+            policy_value_fn,
+            num_games=num_games,
+            num_simulations=num_simulations,
+            max_moves=max_moves,
+            temperature=temperature,
+            temperature_moves=temperature_moves,
+        )
 
     workers = max(1, min(workers, num_games))
 

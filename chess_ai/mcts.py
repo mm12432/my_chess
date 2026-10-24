@@ -7,9 +7,19 @@ import random
 from dataclasses import dataclass, field
 from typing import Dict, Protocol
 
+import numpy as np
+
 from my_chess.chess_ai.action_space import move_to_action_id
 from my_chess.chess_core.chessboard import Chessboard
 from my_chess.chess_core.move import Move
+from my_chess.chess_core.rust_bridge import (
+    BOARD_COLS,
+    BOARD_ROWS,
+    NUM_CHANNELS,
+    RUST_AVAILABLE,
+    RustBoardHandle,
+    RustMctsHandle,
+)
 
 
 class PolicyValueFn(Protocol):
@@ -61,6 +71,7 @@ class MCTSConfig:
     c_puct: float = 1.5
     dirichlet_alpha: float = 0.3
     dirichlet_epsilon: float = 0.25
+    virtual_loss_batch: int = 8
 
 
 class MCTS:
@@ -80,6 +91,9 @@ class MCTS:
 
     def run_with_value(self, board: Chessboard) -> tuple[Dict[int, float], float]:
         """Runs search and also returns the root network value."""
+        if RUST_AVAILABLE and hasattr(self.policy_value_fn, "forward_states_numpy"):
+            return self._run_with_value_rust(board)
+
         # One clone per search; simulations make/unmake on this working board.
         working = board.clone()
         root = SearchNode()
@@ -96,6 +110,35 @@ class MCTS:
             action_id: edge.visits / total for action_id, edge in root.edges.items()
         }
         return distribution, root_value
+
+    def _run_with_value_rust(self, board: Chessboard) -> tuple[Dict[int, float], float]:
+        """Runs batched MCTS entirely in the native Rust engine."""
+        self._root_legal_moves.clear()
+        batch_size = max(1, int(self.config.virtual_loss_batch))
+        states_buf = np.empty(
+            (batch_size, NUM_CHANNELS, BOARD_ROWS, BOARD_COLS), dtype=np.float32
+        )
+        rust_board = RustBoardHandle.from_python_board(board)
+        rust_mcts = RustMctsHandle(
+            rust_board,
+            num_simulations=self.config.num_simulations,
+            c_puct=self.config.c_puct,
+            dirichlet_alpha=self.config.dirichlet_alpha,
+            dirichlet_epsilon=self.config.dirichlet_epsilon,
+        )
+        try:
+            while not rust_mcts.is_finished:
+                num_leaves = rust_mcts.select_leaves_into(batch_size, states_buf)
+                if num_leaves == 0:
+                    break
+                logits_np, values_np = self.policy_value_fn.forward_states_numpy(
+                    states_buf[:num_leaves]
+                )
+                rust_mcts.apply_evaluated_leaves(num_leaves, logits_np, values_np)
+            return rust_mcts.get_root_result()
+        finally:
+            rust_mcts.close()
+            rust_board.close()
 
     def _simulate(self, node: SearchNode, board: Chessboard) -> float:
         """Runs one simulation from a node and backpropagates the result."""
@@ -191,6 +234,12 @@ class MCTS:
         cached = self._root_legal_moves.get(action_id)
         if cached is not None:
             return cached
+        from_idx, to_idx = divmod(int(action_id), BOARD_COLS * BOARD_ROWS)
+        from_row, from_col = divmod(from_idx, BOARD_COLS)
+        to_row, to_col = divmod(to_idx, BOARD_COLS)
+        piece = board.get_chessman(from_col, from_row)
+        if piece is not None and piece.is_red == board.is_red_turn:
+            return Move.from_coords(from_col, from_row, to_col, to_row, piece.name)
         for move in board.get_legal_moves():
             if move_to_action_id(move) == action_id:
                 return move

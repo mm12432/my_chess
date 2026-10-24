@@ -46,6 +46,26 @@ class TorchPolicyValueEvaluator:
         return self.evaluate_batch([board], [legal_moves])[0]
 
     @torch.inference_mode()
+    def forward_states_numpy(
+        self, states_np: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Runs a batched forward pass on pre-encoded canonical (N, 15, 10, 9) float32 states.
+
+        Returns contiguous float32 numpy arrays: (policy_logits[N, 8100], values[N]).
+        """
+        states = torch.from_numpy(states_np).to(
+            device=self.device, dtype=torch.float32, non_blocking=True
+        )
+        policy_logits, values = self.model(states)
+        logits_np = np.ascontiguousarray(
+            policy_logits.detach().float().cpu().numpy(), dtype=np.float32
+        )
+        values_np = np.ascontiguousarray(
+            values.detach().float().cpu().reshape(-1).numpy(), dtype=np.float32
+        )
+        return logits_np, values_np
+
+    @torch.inference_mode()
     def evaluate_batch(
         self,
         boards: Sequence[Chessboard],

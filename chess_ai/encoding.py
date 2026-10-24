@@ -13,6 +13,10 @@ from typing import List, Sequence, Tuple
 import numpy as np
 
 from my_chess.chess_core.chessboard import Chessboard
+from my_chess.chess_core.rust_bridge import (
+    RUST_AVAILABLE,
+    rust_encode_board_numpy,
+)
 
 BOARD_COLS = 9
 BOARD_ROWS = 10
@@ -69,6 +73,8 @@ def empty_tensor() -> List[List[List[int]]]:
 
 def encode_board_numpy(board: Chessboard) -> np.ndarray:
     """Encodes a board into a canonical C x H x W float32 array."""
+    if RUST_AVAILABLE:
+        return rust_encode_board_numpy(board)
     arr = np.zeros((NUM_CHANNELS, BOARD_ROWS, BOARD_COLS), dtype=np.float32)
     _fill_planes(board, arr)
     return arr

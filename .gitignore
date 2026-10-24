@@ -47,4 +47,6 @@ htmlcov/
 .coverage
 artifacts/logs/
 artifacts/experience/
+rust_core/target/
+
 

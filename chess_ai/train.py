@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
+import numpy as np
 import torch
 import torch.nn.functional as functional
 
@@ -17,6 +18,7 @@ from my_chess.chess_ai.evaluator import TorchPolicyValueEvaluator
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig
 from my_chess.chess_ai.model import AlphaZeroNet, NetworkConfig, build_model
 from my_chess.chess_ai.self_play import SelfPlayGenerator, play_games_parallel
+from my_chess.chess_core.rust_bridge import RUST_AVAILABLE
 
 DEFAULT_CHECKPOINT_DIR = Path("artifacts") / "checkpoints"
 DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "latest.pt"
@@ -80,16 +82,16 @@ class AlphaZeroTrainer:
         if not samples:
             raise ValueError("train_step requires at least one sample")
 
-        states = torch.tensor(
-            [sample.state for sample in samples],
-            dtype=torch.float32,
-            device=self.device,
+        states_np = np.stack(
+            [np.asarray(sample.state, dtype=np.float32) for sample in samples],
+            axis=0,
         )
-        policy_targets = torch.tensor(
-            [sample.policy_target for sample in samples],
-            dtype=torch.float32,
-            device=self.device,
+        policy_np = np.stack(
+            [np.asarray(sample.policy_target, dtype=np.float32) for sample in samples],
+            axis=0,
         )
+        states = torch.from_numpy(states_np).to(self.device, non_blocking=True)
+        policy_targets = torch.from_numpy(policy_np).to(self.device, non_blocking=True)
         value_targets = torch.tensor(
             [sample.value_target for sample in samples],
             dtype=torch.float32,
@@ -337,7 +339,25 @@ def run_training(
     for iteration in range(start_iteration, end_iteration + 1):
         play_started = time.perf_counter()
         results: list[str] = []
-        if workers <= 1:
+        if RUST_AVAILABLE or workers > 1:
+            samples, results = play_games_parallel(
+                evaluator,
+                num_games=run_config.games_per_iteration,
+                num_simulations=run_config.num_simulations,
+                max_moves=run_config.max_moves_per_game,
+                workers=workers,
+                temperature=run_config.temperature,
+                temperature_moves=run_config.temperature_moves,
+            )
+            replay_buffer.extend(samples)
+            generated = len(samples)
+            print(
+                f"[iter {iteration}] batched games="
+                f"{run_config.games_per_iteration} "
+                f"engine={'rust' if RUST_AVAILABLE else f'py-workers({workers})'} "
+                f"samples={generated}"
+            )
+        else:
             generator = SelfPlayGenerator(
                 MCTS(evaluator, MCTSConfig(num_simulations=run_config.num_simulations)),
                 temperature=run_config.temperature,
@@ -357,24 +377,6 @@ def run_training(
                     f"moves={len(samples)} result={generator.last_result} "
                     f"time={game_seconds:.1f}s"
                 )
-        else:
-            samples, results = play_games_parallel(
-                evaluator,
-                num_games=run_config.games_per_iteration,
-                num_simulations=run_config.num_simulations,
-                max_moves=run_config.max_moves_per_game,
-                workers=workers,
-                temperature=run_config.temperature,
-                temperature_moves=run_config.temperature_moves,
-            )
-            replay_buffer.extend(samples)
-            generated = len(samples)
-            print(
-                f"[iter {iteration}] parallel games="
-                f"{run_config.games_per_iteration} "
-                f"workers={workers} "
-                f"samples={generated}"
-            )
         play_seconds = time.perf_counter() - play_started
         red_wins = results.count("Red")
         black_wins = results.count("Black")
