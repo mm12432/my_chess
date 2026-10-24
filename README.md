@@ -3,6 +3,16 @@ A Python implementation of Chinese Chess (Xiangqi) with Pygame, currently being 
 
 [English](README.md) | [中文](README_CN.md)
 
+## What's New in v1.3
+- **Rust High-Performance MCTS Engine**: Introduced native Rust core search extension (`rust_core` compiled as `my_chess_rust_core.dll`) with fast C FFI bindings; features zero-copy make/unmake move backtracking, strict checkmate detection, and executes 800 MCTS simulations in under 0.3s.
+- **MCTS Search Quality Upgrade (FPU Reduction)**: Integrated First-Play Urgency (FPU) penalty reduction for unvisited nodes in both Rust and Python MCTS, focusing the search tree on high-prior tactical lines and boosting opening move concentration by over 300%.
+- **Automated Online Self-Training (`online-train`)**: Built-in automated online match engine powered by `ego-lite` browser environment to challenge `play.xiangqi.com` computer bots, extract teacher demonstrations, and incrementally fine-tune `artifacts/checkpoints/latest.pt` directly on CUDA.
+- **10 Bot Difficulty Levels (`--level [1-10]`)**: Full support for selecting opponent bot difficulty from Level 1 (Meow beginner bot) to Level 10 (Hu grandmaster bot) for progressive curricula learning.
+- **Zero-Calibration Resolution Auto-Adaptation**: Dynamic DOM geometry evaluation via `getBoundingClientRect()` at runtime enables pixel-perfect centering on any screen (1080p, 2K, 4K, ultrawide) and any DPI scaling ratio (100%~200%) without manual calibration.
+- **Bidirectional WXF Notation Converter**: Added robust converter between internal ICCS moves and standard World Xiangqi Federation (WXF) algebraic notation (e.g. `P9+1`, `c2=5`, front/back disambiguation `+n+6`).
+- **Post-Game GUI Incremental Learning**: Supports human vs AI play with immediate learning (`python run.py ai-black learn`), 3x policy weighting on human winning moves, and symmetry mirror augmentation.
+- **Expanded Test Suite**: Unit tests increased to 58, verifying pure rule outcomes, WXF notation parsing, and Rust engine safety.
+
 ## What's New in v1.2
 - **UI Overhaul**: Expanded window layout (800×800 → 1000×800) with a new sidebar panel featuring turn indicator, game timer, standard Chinese notation move log, and control buttons (Restart, Save FEN).
 - **Rule Engine**: Implemented Zobrist Hashing for position tracking, perpetual check/chase detection (offender loses on 3-fold repetition), and stalemate detection (no legal moves = loss).
