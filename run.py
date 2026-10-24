@@ -25,6 +25,15 @@ def main():
         except ImportError as e:
             print(f"Error importing training entrypoint: {e}")
             sys.exit(1)
+    elif len(sys.argv) > 1 and sys.argv[1] == "online-train":
+        try:
+            from my_chess.chess_ai import online_trainer
+
+            sys.argv = [sys.argv[0], *sys.argv[2:]]
+            online_trainer.main()
+        except ImportError as e:
+            print(f"Error importing online trainer: {e}")
+            sys.exit(1)
     else:
         try:
             from my_chess.chess_ui import win_game
