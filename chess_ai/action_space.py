@@ -47,6 +47,25 @@ def action_id_to_move(action_id: int, piece_name: str | None = None) -> Move:
     )
 
 
+def _mirror_square(index: int) -> int:
+    row, col = divmod(index, BOARD_COLS)
+    return (BOARD_ROWS - 1 - row) * BOARD_COLS + col
+
+
+_MIRROR_SQUARE = [_mirror_square(i) for i in range(NUM_SQUARES)]
+
+
+def mirror_action_id(action_id: int) -> int:
+    """Mirrors an action vertically (row -> 9 - row); an involution."""
+    from_index, to_index = divmod(action_id, NUM_SQUARES)
+    return _MIRROR_SQUARE[from_index] * NUM_SQUARES + _MIRROR_SQUARE[to_index]
+
+
+def canonical_action_id(action_id: int, is_red_turn: bool) -> int:
+    """Maps an absolute action id to the side-to-move network index (and back)."""
+    return action_id if is_red_turn else mirror_action_id(action_id)
+
+
 def legal_moves_to_mask(legal_moves: Iterable[Move]) -> List[int]:
     """Builds a dense 0/1 legal-action mask from legal moves."""
     mask = [0] * ACTION_SPACE_SIZE

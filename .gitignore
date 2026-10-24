@@ -45,3 +45,6 @@ pip-delete-this-directory.txt
 htmlcov/
 .pytest_cache/
 .coverage
+artifacts/logs/
+artifacts/experience/
+

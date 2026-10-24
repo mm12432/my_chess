@@ -7,9 +7,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable, List
 
-from my_chess.chess_ai.action_space import ACTION_SPACE_SIZE, move_to_action_id
+from my_chess.chess_ai.action_space import (
+    ACTION_SPACE_SIZE,
+    canonical_action_id,
+    move_to_action_id,
+)
 from my_chess.chess_ai.dataset import ReplayBuffer, TrainingSample
-from my_chess.chess_ai.encoding import encode_board
+from my_chess.chess_ai.encoding import ENCODING_VERSION, encode_board
+from my_chess.chess_ai.self_play import dense_policy_target as _dense_canonical
 from my_chess.chess_core.chessboard import Chessboard
 from my_chess.chess_core.move import Move
 
@@ -50,7 +55,7 @@ class OnlineLearningSession:
         sparse_distribution: dict[int, float],
     ) -> None:
         """Records one move using a sparse action distribution."""
-        dense = dense_policy_target(sparse_distribution)
+        dense = dense_policy_target(sparse_distribution, board.is_red_turn)
         self._records.append(
             PendingExperience(
                 state=encode_board(board),
@@ -61,7 +66,7 @@ class OnlineLearningSession:
 
     def record_selected_move(self, board: Chessboard, move: Move) -> None:
         """Records one human move as a one-hot policy target."""
-        dense = one_hot_policy_target(move)
+        dense = one_hot_policy_target(move, board.is_red_turn)
         self._records.append(
             PendingExperience(
                 state=encode_board(board),
@@ -81,12 +86,14 @@ class OnlineLearningSession:
     def finalize(self, winner: str | None) -> list[TrainingSample]:
         """Converts in-progress records into labeled training samples."""
         samples: list[TrainingSample] = []
+        value_weight = 0.0 if winner is None else 1.0
         for record in self._records:
             samples.append(
                 TrainingSample(
                     state=record.state,
                     policy_target=record.policy_target,
                     value_target=self._winner_to_value(winner, record.player_is_red),
+                    value_weight=value_weight,
                 )
             )
         self.reset()
@@ -144,12 +151,16 @@ class PersistentReplayBuffer:
         with self.path.open("rb") as file:
             payload = pickle.load(file)
 
+        if payload.get("encoding_version") != ENCODING_VERSION:
+            # Old-encoding samples would teach the network wrong board views.
+            return buffer
         for item in payload.get("samples", []):
             buffer.add(
                 TrainingSample(
                     state=item["state"],
                     policy_target=item["policy_target"],
                     value_target=item["value_target"],
+                    value_weight=item.get("value_weight", 1.0),
                 )
             )
         return buffer
@@ -159,14 +170,16 @@ class PersistentReplayBuffer:
         self.path.parent.mkdir(parents=True, exist_ok=True)
         trimmed = list(samples)[-self.capacity :]
         payload = {
+            "encoding_version": ENCODING_VERSION,
             "samples": [
                 {
                     "state": sample.state,
                     "policy_target": sample.policy_target,
                     "value_target": sample.value_target,
+                    "value_weight": sample.value_weight,
                 }
                 for sample in trimmed
-            ]
+            ],
         }
         with self.path.open("wb") as file:
             pickle.dump(payload, file)
@@ -216,16 +229,15 @@ class MistakeMemoryStore:
         return memory
 
 
-def dense_policy_target(sparse_distribution: dict[int, float]) -> list[float]:
-    """Converts sparse action probabilities into a dense vector."""
-    dense = [0.0] * ACTION_SPACE_SIZE
-    for action_id, probability in sparse_distribution.items():
-        dense[action_id] = probability
-    return dense
+def dense_policy_target(
+    sparse_distribution: dict[int, float], is_red_turn: bool
+) -> list[float]:
+    """Converts sparse absolute-id probabilities into a dense canonical vector."""
+    return _dense_canonical(sparse_distribution, is_red_turn)
 
 
-def one_hot_policy_target(move: Move) -> list[float]:
-    """Builds a one-hot policy target for a selected move."""
+def one_hot_policy_target(move: Move, is_red_turn: bool) -> list[float]:
+    """Builds a canonical one-hot policy target for a selected move."""
     dense = [0.0] * ACTION_SPACE_SIZE
-    dense[move_to_action_id(move)] = 1.0
+    dense[canonical_action_id(move_to_action_id(move), is_red_turn)] = 1.0
     return dense

@@ -8,14 +8,15 @@ from pathlib import Path
 
 import torch
 
-from my_chess.chess_ai.evaluator import (
-    HybridPolicyValueEvaluator,
-    TorchPolicyValueEvaluator,
-)
+from my_chess.chess_ai.evaluator import TorchPolicyValueEvaluator
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig, uniform_policy_value_fn
 from my_chess.chess_ai.model import TORCH_AVAILABLE, build_model
 from my_chess.chess_ai.online_learning import MistakeMemoryStore
-from my_chess.chess_ai.train import DEFAULT_CHECKPOINT_PATH, load_checkpoint
+from my_chess.chess_ai.train import (
+    DEFAULT_CHECKPOINT_PATH,
+    checkpoint_is_compatible,
+    load_training_checkpoint,
+)
 from my_chess.chess_core.chessboard import Chessboard
 from my_chess.chess_core.move import Move
 
@@ -54,21 +55,20 @@ class AIPlayer:
         self.mistake_memory = mistake_memory or MistakeMemoryStore().load()
 
         if TORCH_AVAILABLE:
+            model = None
             if checkpoint_path.exists():
-                model = load_checkpoint(checkpoint_path, device=self.device)
+                loaded, checkpoint = load_training_checkpoint(
+                    checkpoint_path, device=self.device
+                )
+                if checkpoint_is_compatible(checkpoint):
+                    model = loaded
+            if model is not None:
                 self.model_source = "trained"
-                # Pure network so self-play / online learning actually show up in play.
-                self.evaluator = TorchPolicyValueEvaluator(model, device=self.device)
             else:
+                # No usable checkpoint: untrained net, no handcrafted scoring.
                 model = build_model()
                 self.model_source = "random_init"
-                # Untrained nets need light tactical bias; heuristic no longer clones.
-                self.evaluator = HybridPolicyValueEvaluator(
-                    model,
-                    device=self.device,
-                    model_prior_weight=0.5,
-                    model_value_weight=0.5,
-                )
+            self.evaluator = TorchPolicyValueEvaluator(model, device=self.device)
             self.mcts = MCTS(
                 self.evaluator, MCTSConfig(num_simulations=num_simulations)
             )

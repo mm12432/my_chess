@@ -1,95 +1,31 @@
-"""Policy/value evaluation helpers for search and training."""
+"""Policy/value evaluation for search: pure neural network, no handcrafted scoring.
+
+AlphaZero principle: the only ground truth is the game outcome (win/loss).
+No material counts or positional tables — those would forbid sacrifices that
+the network could otherwise discover through self-play.
+"""
 
 from __future__ import annotations
 
-import math
-from typing import Dict
+from typing import Dict, List, Sequence
 
+import numpy as np
 import torch
 
-from my_chess.chess_ai.action_space import move_to_action_id
-from my_chess.chess_ai.encoding import encode_board
+from my_chess.chess_ai.action_space import canonical_action_id, move_to_action_id
+from my_chess.chess_ai.encoding import encode_boards_batch
 from my_chess.chess_ai.model import AlphaZeroNet
-from my_chess.chess_core import chessman
 from my_chess.chess_core.chessboard import Chessboard
 from my_chess.chess_core.move import Move
 
-PIECE_VALUES = {
-    chessman.King: 1000.0,
-    chessman.Rook: 9.0,
-    chessman.Cannon: 4.5,
-    chessman.Knight: 4.0,
-    chessman.Elephant: 2.0,
-    chessman.Mandarin: 2.0,
-    chessman.Pawn: 1.5,
-}
-
-
-def piece_value(piece: chessman.Chessman | None) -> float:
-    """Returns a coarse tactical value for a piece."""
-    if piece is None:
-        return 0.0
-    for piece_type, value in PIECE_VALUES.items():
-        if isinstance(piece, piece_type):
-            return value
-    return 0.0
-
-
-def heuristic_value(board: Chessboard) -> float:
-    """Returns a normalized board value from the current side-to-move view."""
-    red_material = 0.0
-    black_material = 0.0
-    for piece in board.chessmans_hash.values():
-        value = piece_value(piece)
-        if piece.is_red:
-            red_material += value
-        else:
-            black_material += value
-
-    material_delta = (
-        red_material - black_material
-        if board.is_red_turn
-        else black_material - red_material
-    )
-    return math.tanh(material_delta / 12.0)
-
-
-def heuristic_move_score(board: Chessboard, move: Move) -> float:
-    """Assigns a cheap tactical score without cloning the board.
-
-    Capture value is enough for bootstrap priors. Full clone/apply checks used to
-    dominate self-play time and are intentionally avoided here.
-    """
-    score = 1.0
-    target_piece = board.get_chessman(move.to_point.x, move.to_point.y)
-    if target_piece is not None:
-        score += piece_value(target_piece) * 3.0
-        if isinstance(target_piece, chessman.King):
-            score += 10_000.0
-    return score
-
-
-def heuristic_policy_value_fn(
-    board: Chessboard,
-    legal_moves: list[Move] | None = None,
-) -> tuple[Dict[int, float], float]:
-    """Pure heuristic policy/value estimate used for bootstrapping."""
-    if legal_moves is None:
-        legal_moves = board.get_legal_moves()
-    if not legal_moves:
-        return {}, 0.0
-
-    raw_scores = [heuristic_move_score(board, move) for move in legal_moves]
-    total = sum(raw_scores)
-    priors = {
-        move_to_action_id(move): score / total
-        for move, score in zip(legal_moves, raw_scores)
-    }
-    return priors, heuristic_value(board)
-
 
 class TorchPolicyValueEvaluator:
-    """Wraps a torch model into the MCTS policy/value callable interface."""
+    """Wraps a torch model into the MCTS policy/value callable interface.
+
+    The network sees the board from the side-to-move perspective, so policy
+    logits are indexed with canonical action ids and mapped back to absolute
+    action ids for MCTS.
+    """
 
     def __init__(self, model: AlphaZeroNet, device: str = "cpu") -> None:
         self.model = model.to(device)
@@ -107,69 +43,42 @@ class TorchPolicyValueEvaluator:
             legal_moves = board.get_legal_moves()
         if not legal_moves:
             return {}, 0.0
+        return self.evaluate_batch([board], [legal_moves])[0]
 
-        state = torch.tensor(
-            [encode_board(board)],
-            dtype=torch.float32,
-            device=self.device,
-        )
-        policy_logits, value = self.model(state)
-        logits = policy_logits[0]
-
-        action_ids = [move_to_action_id(move) for move in legal_moves]
-        legal_logits = logits[action_ids]
-        legal_probs = torch.softmax(legal_logits, dim=0).tolist()
-
-        priors = {
-            action_id: float(probability)
-            for action_id, probability in zip(action_ids, legal_probs)
-        }
-        return priors, float(value.item())
-
-
-class HybridPolicyValueEvaluator:
-    """Blends model output with cheap heuristic guidance for play bootstrapping."""
-
-    def __init__(
+    @torch.inference_mode()
+    def evaluate_batch(
         self,
-        model: AlphaZeroNet,
-        device: str = "cpu",
-        model_prior_weight: float = 0.7,
-        model_value_weight: float = 0.7,
-    ) -> None:
-        self.model_evaluator = TorchPolicyValueEvaluator(model, device=device)
-        self.model_prior_weight = model_prior_weight
-        self.model_value_weight = model_value_weight
+        boards: Sequence[Chessboard],
+        legal_moves_list: Sequence[list[Move] | None] | None = None,
+    ) -> List[tuple[Dict[int, float], float]]:
+        """Evaluates multiple boards in a single batched forward pass."""
+        if not boards:
+            return []
+        if legal_moves_list is None:
+            resolved = [b.get_legal_moves() for b in boards]
+        else:
+            resolved = [
+                b.get_legal_moves() if moves is None else moves
+                for b, moves in zip(boards, legal_moves_list)
+            ]
 
-    def __call__(
-        self,
-        board: Chessboard,
-        legal_moves: list[Move] | None = None,
-    ) -> tuple[Dict[int, float], float]:
-        """Returns blended priors/value for the current board."""
-        if legal_moves is None:
-            legal_moves = board.get_legal_moves()
-        heuristic_priors, heuristic_eval = heuristic_policy_value_fn(
-            board, legal_moves=legal_moves
-        )
-        model_priors, model_eval = self.model_evaluator(board, legal_moves=legal_moves)
-        if not heuristic_priors:
-            return {}, 0.0
+        states = torch.from_numpy(encode_boards_batch(boards)).to(self.device)
+        policy_logits, values = self.model(states)
+        logits_np = policy_logits.float().cpu().numpy()
+        values_list = values.float().cpu().reshape(-1).tolist()
 
-        blended: Dict[int, float] = {}
-        for action_id, heuristic_prior in heuristic_priors.items():
-            model_prior = model_priors.get(action_id, 0.0)
-            blended[action_id] = (
-                self.model_prior_weight * model_prior
-                + (1.0 - self.model_prior_weight) * heuristic_prior
-            )
-
-        total = sum(blended.values())
-        if total > 0:
-            blended = {action_id: prior / total for action_id, prior in blended.items()}
-
-        value = (
-            self.model_value_weight * model_eval
-            + (1.0 - self.model_value_weight) * heuristic_eval
-        )
-        return blended, value
+        results: List[tuple[Dict[int, float], float]] = []
+        for idx, (board, legal_moves) in enumerate(zip(boards, resolved)):
+            if not legal_moves:
+                results.append(({}, 0.0))
+                continue
+            is_red = board.is_red_turn
+            action_ids = [move_to_action_id(move) for move in legal_moves]
+            net_ids = [canonical_action_id(a, is_red) for a in action_ids]
+            legal_logits = logits_np[idx, net_ids]
+            legal_logits = legal_logits - legal_logits.max()
+            probs = np.exp(legal_logits)
+            probs /= probs.sum()
+            priors = dict(zip(action_ids, probs.tolist()))
+            results.append((priors, float(values_list[idx])))
+        return results

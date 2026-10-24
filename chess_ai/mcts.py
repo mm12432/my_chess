@@ -79,7 +79,7 @@ class MCTS:
         return distribution
 
     def run_with_value(self, board: Chessboard) -> tuple[Dict[int, float], float]:
-        """Runs search and also returns the root network/heuristic value."""
+        """Runs search and also returns the root network value."""
         # One clone per search; simulations make/unmake on this working board.
         working = board.clone()
         root = SearchNode()

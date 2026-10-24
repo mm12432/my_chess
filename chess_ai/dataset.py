@@ -20,11 +20,14 @@ class TrainingSample:
         state: Encoded board tensor with shape C x H x W.
         policy_target: Dense action distribution with length ACTION_SPACE_SIZE.
         value_target: Final game outcome from the current player's perspective.
+        value_weight: 1.0 when the game reached a real result, 0.0 when it was
+            truncated (unknown outcome must not be taught as a draw).
     """
 
     state: Tensor3D
     policy_target: List[float]
     value_target: float
+    value_weight: float = 1.0
 
     def validate(self) -> None:
         """Checks sample shape invariants early."""

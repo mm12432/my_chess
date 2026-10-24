@@ -12,6 +12,7 @@ import torch
 import torch.nn.functional as functional
 
 from my_chess.chess_ai.dataset import ReplayBuffer, TrainingSample
+from my_chess.chess_ai.encoding import ENCODING_VERSION
 from my_chess.chess_ai.evaluator import TorchPolicyValueEvaluator
 from my_chess.chess_ai.mcts import MCTS, MCTSConfig
 from my_chess.chess_ai.model import AlphaZeroNet, NetworkConfig, build_model
@@ -19,6 +20,11 @@ from my_chess.chess_ai.self_play import SelfPlayGenerator, play_games_parallel
 
 DEFAULT_CHECKPOINT_DIR = Path("artifacts") / "checkpoints"
 DEFAULT_CHECKPOINT_PATH = DEFAULT_CHECKPOINT_DIR / "latest.pt"
+
+
+def checkpoint_is_compatible(checkpoint: dict) -> bool:
+    """Returns True if the checkpoint was trained with the current encoding."""
+    return checkpoint.get("encoding_version") == ENCODING_VERSION
 
 
 @dataclass(frozen=True)
@@ -33,20 +39,20 @@ class TrainingConfig:
 class TrainingRunConfig:
     """Top-level training-loop configuration.
 
-    Defaults bias toward throughput over search depth so the model can actually
-    see enough games to improve under a pure-Python rule engine.
+    max_moves_per_game is in plies and must be large enough for games to reach
+    a real result; truncated games contribute no value signal.
     """
 
     iterations: int = 20
     games_per_iteration: int = 8
-    max_moves_per_game: int = 80
-    num_simulations: int = 12
+    max_moves_per_game: int = 300
+    num_simulations: int = 64
     train_steps_per_iteration: int = 24
     replay_buffer_capacity: int = 8192
     batch_size: int = 64
     self_play_workers: int = 0
     temperature: float = 1.0
-    temperature_moves: int = 12
+    temperature_moves: int = 30
     checkpoint_path: Path = DEFAULT_CHECKPOINT_PATH
 
 
@@ -89,13 +95,20 @@ class AlphaZeroTrainer:
             dtype=torch.float32,
             device=self.device,
         )
+        value_weights = torch.tensor(
+            [sample.value_weight for sample in samples],
+            dtype=torch.float32,
+            device=self.device,
+        )
 
         self.model.train()
         policy_logits, values = self.model(states)
 
         policy_log_probs = functional.log_softmax(policy_logits, dim=1)
         policy_loss = -(policy_targets * policy_log_probs).sum(dim=1).mean()
-        value_loss = functional.mse_loss(values, value_targets)
+        # Only games with a real result teach the value head.
+        squared = (values - value_targets) ** 2 * value_weights
+        value_loss = squared.sum() / value_weights.sum().clamp(min=1.0)
         loss = policy_loss + value_loss
 
         self.optimizer.zero_grad()
@@ -121,6 +134,7 @@ def save_checkpoint(
     payload = {
         "model_state_dict": model.state_dict(),
         "network_config": model.config.__dict__,
+        "encoding_version": ENCODING_VERSION,
     }
     if trainer is not None:
         payload["optimizer_state_dict"] = trainer.optimizer.state_dict()
@@ -187,15 +201,17 @@ def incremental_train_on_samples(
 
     optimizer_state = None
     extra = {}
+    checkpoint = {}
     if checkpoint_path.exists():
         if verbose:
             print(f"[online-train] loading checkpoint={checkpoint_path}")
         model, checkpoint = load_training_checkpoint(checkpoint_path, device=device)
+    if checkpoint and checkpoint_is_compatible(checkpoint):
         optimizer_state = checkpoint.get("optimizer_state_dict")
         extra = checkpoint.get("extra", {})
     else:
         if verbose:
-            print("[online-train] no checkpoint found, building fresh model")
+            print("[online-train] no compatible checkpoint, building fresh model")
         model = build_model()
 
     trainer = AlphaZeroTrainer(model, config=training_config, device=device)
@@ -275,24 +291,30 @@ def run_training(
         model, checkpoint = load_training_checkpoint(
             run_config.checkpoint_path, device=device
         )
-        checkpoint_extra = checkpoint.get("extra", {})
-        start_iteration = int(checkpoint_extra.get("iteration", 0)) + 1
-        print(
-            f"[resume] checkpoint={run_config.checkpoint_path} "
-            f"last_iteration={checkpoint_extra.get('iteration', 0)} "
-            f"buffer={checkpoint_extra.get('buffer_size', 'n/a')}"
-        )
+        if not checkpoint_is_compatible(checkpoint):
+            print(
+                f"[resume] checkpoint={run_config.checkpoint_path} uses an old "
+                "encoding; starting from a fresh model."
+            )
+            checkpoint = {}
+            model = build_model()
+        else:
+            checkpoint_extra = checkpoint.get("extra", {})
+            start_iteration = int(checkpoint_extra.get("iteration", 0)) + 1
+            print(
+                f"[resume] checkpoint={run_config.checkpoint_path} "
+                f"last_iteration={checkpoint_extra.get('iteration', 0)} "
+                f"buffer={checkpoint_extra.get('buffer_size', 'n/a')}"
+            )
     else:
         model = build_model()
 
     trainer = AlphaZeroTrainer(model, config=training_config, device=device)
-    if resume and run_config.checkpoint_path.exists():
-        optimizer_state = checkpoint.get("optimizer_state_dict")
-        if optimizer_state:
-            trainer.optimizer.load_state_dict(optimizer_state)
+    optimizer_state = checkpoint.get("optimizer_state_dict")
+    if optimizer_state:
+        trainer.optimizer.load_state_dict(optimizer_state)
 
-    # Pure network eval for self-play: Hybrid used to dominate wall time via
-    # per-move board clones and diluted the learned policy signal.
+    # Pure network eval: the only learning signal is the game outcome.
     evaluator = TorchPolicyValueEvaluator(trainer.model, device=device)
     replay_buffer = ReplayBuffer(capacity=run_config.replay_buffer_capacity)
     workers = run_config.self_play_workers
@@ -314,6 +336,7 @@ def run_training(
     end_iteration = start_iteration + run_config.iterations - 1
     for iteration in range(start_iteration, end_iteration + 1):
         play_started = time.perf_counter()
+        results: list[str] = []
         if workers <= 1:
             generator = SelfPlayGenerator(
                 MCTS(evaluator, MCTSConfig(num_simulations=run_config.num_simulations)),
@@ -326,14 +349,16 @@ def run_training(
                 samples = generator.play_game(max_moves=run_config.max_moves_per_game)
                 replay_buffer.extend(samples)
                 generated += len(samples)
+                results.append(generator.last_result)
                 game_seconds = time.perf_counter() - game_started
                 print(
                     f"[iter {iteration}] game {game_index + 1}/"
                     f"{run_config.games_per_iteration} "
-                    f"moves={len(samples)} time={game_seconds:.1f}s"
+                    f"moves={len(samples)} result={generator.last_result} "
+                    f"time={game_seconds:.1f}s"
                 )
         else:
-            samples = play_games_parallel(
+            samples, results = play_games_parallel(
                 evaluator,
                 num_games=run_config.games_per_iteration,
                 num_simulations=run_config.num_simulations,
@@ -351,6 +376,9 @@ def run_training(
                 f"samples={generated}"
             )
         play_seconds = time.perf_counter() - play_started
+        red_wins = results.count("Red")
+        black_wins = results.count("Black")
+        truncated = len(results) - red_wins - black_wins
 
         if not replay_buffer:
             raise RuntimeError("No samples were generated for training")
@@ -379,6 +407,7 @@ def run_training(
             (
                 f"[iter {iteration}/{end_iteration}] "
                 f"generated={generated} "
+                f"results(R/B/trunc)={red_wins}/{black_wins}/{truncated} "
                 f"buffer={len(replay_buffer)} "
                 f"play={play_seconds:.1f}s "
                 f"train={train_seconds:.1f}s "
@@ -397,8 +426,8 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Train the Xiangqi AlphaZero model")
     parser.add_argument("--iterations", type=int, default=20)
     parser.add_argument("--games-per-iteration", type=int, default=8)
-    parser.add_argument("--max-moves-per-game", type=int, default=80)
-    parser.add_argument("--num-simulations", type=int, default=12)
+    parser.add_argument("--max-moves-per-game", type=int, default=300)
+    parser.add_argument("--num-simulations", type=int, default=64)
     parser.add_argument("--train-steps-per-iteration", type=int, default=24)
     parser.add_argument("--replay-buffer-capacity", type=int, default=8192)
     parser.add_argument("--batch-size", type=int, default=64)
@@ -409,7 +438,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
         help="Parallel self-play threads. 0=auto (1 on CUDA, up to 4 on CPU).",
     )
     parser.add_argument("--temperature", type=float, default=1.0)
-    parser.add_argument("--temperature-moves", type=int, default=12)
+    parser.add_argument("--temperature-moves", type=int, default=30)
     parser.add_argument("--learning-rate", type=float, default=1e-3)
     parser.add_argument("--weight-decay", type=float, default=1e-4)
     parser.add_argument(
